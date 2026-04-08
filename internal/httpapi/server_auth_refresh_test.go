@@ -53,6 +53,17 @@ func TestRefreshTokenRotationInvalidatesPreviousToken(t *testing.T) {
 	if rr2.Code != http.StatusUnauthorized {
 		t.Fatalf("reusing rotated refresh should be unauthorized: got=%d body=%s", rr2.Code, rr2.Body.String())
 	}
+
+	found := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_REFRESH_ROTATED" && evt.ActorID == "u-1" && evt.ResourceID == oldID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected AUTH_REFRESH_ROTATED audit event")
+	}
 }
 
 func TestLogoutRevokesRefreshSession(t *testing.T) {
@@ -88,5 +99,16 @@ func TestLogoutRevokesRefreshSession(t *testing.T) {
 	}
 	if !sess.Revoked {
 		t.Fatalf("expected refresh session revoked by logout")
+	}
+
+	found := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_LOGOUT" && evt.ActorID == "u-2" && evt.ResourceID == refreshID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected AUTH_LOGOUT audit event")
 	}
 }

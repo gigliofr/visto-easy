@@ -65,6 +65,17 @@ func TestForgotAndResetPasswordFlow(t *testing.T) {
 	if rrLogin.Code != http.StatusOK {
 		t.Fatalf("login with new password should succeed: got=%d body=%s", rrLogin.Code, rrLogin.Body.String())
 	}
+
+	found := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_PASSWORD_RESET" && evt.ActorID == u.ID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected AUTH_PASSWORD_RESET audit event")
+	}
 }
 
 func TestResetPasswordTokenIsOneTime(t *testing.T) {

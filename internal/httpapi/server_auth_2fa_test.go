@@ -75,4 +75,18 @@ func TestTwoFASetupEnableAndLogin(t *testing.T) {
 	if rrWithOTP.Code != http.StatusOK {
 		t.Fatalf("expected login success with otp: got=%d body=%s", rrWithOTP.Code, rrWithOTP.Body.String())
 	}
+
+	hasSetup := false
+	hasEnable := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_2FA_SETUP" && evt.ActorID == u.ID {
+			hasSetup = true
+		}
+		if evt.Action == "AUTH_2FA_ENABLED" && evt.ActorID == u.ID {
+			hasEnable = true
+		}
+	}
+	if !hasSetup || !hasEnable {
+		t.Fatalf("expected AUTH_2FA_SETUP and AUTH_2FA_ENABLED audit events, got setup=%v enable=%v", hasSetup, hasEnable)
+	}
 }

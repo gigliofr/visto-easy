@@ -312,6 +312,17 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		Revoked:    false,
 	})
 	_, _ = s.store.RevokeRefreshSession(c.ID, newRefreshID)
+	_, _ = s.store.AddAuditEvent(model.AuditEvent{
+		ActorID:    c.UserID,
+		ActorRole:  c.Role,
+		Action:     "AUTH_REFRESH_ROTATED",
+		Resource:   "refresh_session",
+		ResourceID: c.ID,
+		IP:         clientIP(r),
+		Details: map[string]any{
+			"new_refresh_session_id": newRefreshID,
+		},
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh})
 }
 
@@ -319,7 +330,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	var req struct { RefreshToken string `json:"refresh_token"` }
 	if decodeJSON(w, r, &req) && strings.TrimSpace(req.RefreshToken) != "" {
 		if c, err := s.tokens.Parse(req.RefreshToken); err == nil && c.Type == "refresh" && strings.TrimSpace(c.ID) != "" {
-			_, _ = s.store.RevokeRefreshSession(c.ID, "")
+			if ok, _ := s.store.RevokeRefreshSession(c.ID, ""); ok {
+				_, _ = s.store.AddAuditEvent(model.AuditEvent{
+					ActorID:    c.UserID,
+					ActorRole:  c.Role,
+					Action:     "AUTH_LOGOUT",
+					Resource:   "refresh_session",
+					ResourceID: c.ID,
+					IP:         clientIP(r),
+				})
+			}
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
@@ -422,6 +442,18 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		UserID:  resetRec.UserID,
 		IP:      clientIP(r),
 	})
+	actorRole := ""
+	if u, err := s.store.GetUserByID(resetRec.UserID); err == nil {
+		actorRole = string(u.Ruolo)
+	}
+	_, _ = s.store.AddAuditEvent(model.AuditEvent{
+		ActorID:    resetRec.UserID,
+		ActorRole:  actorRole,
+		Action:     "AUTH_PASSWORD_RESET",
+		Resource:   "user",
+		ResourceID: resetRec.UserID,
+		IP:         clientIP(r),
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
 }
 
@@ -448,6 +480,7 @@ func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = s.store.SetUserTOTPEnabled(u.ID, false)
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_SETUP", Outcome: "pending_enable", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	s.recordAuditEvent(r, claims, "AUTH_2FA_SETUP", "user", u.ID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "secret": secret, "provisioning_uri": uri})
 }
 
@@ -482,6 +515,7 @@ func (s *Server) handle2FAEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_ENABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	s.recordAuditEvent(r, claims, "AUTH_2FA_ENABLED", "user", u.ID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "enabled"})
 }
 
@@ -512,6 +546,7 @@ func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = s.store.SetUserTOTPSecret(u.ID, "")
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_DISABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	s.recordAuditEvent(r, claims, "AUTH_2FA_DISABLED", "user", u.ID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "disabled"})
 }
 
