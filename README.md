@@ -48,13 +48,26 @@ curl http://localhost:8080/api/v1/health
 ## Deploy (Coolify / Railway)
 
 - Docker multi-stage pronto in `Dockerfile`
-- Variabili minime:
+- Variabili consigliate (pronte per Coolify):
 
 ```bash
 PORT=8080
 ENVIRONMENT=production
 LOG_LEVEL=info
 JWT_SECRET=change_me_with_32_plus_chars_minimum
+SESSION_SECRET=change_me_with_32_plus_chars_minimum
+
+DATABASE_PROVIDER=postgres
+DATABASE_NAME=visto-easy
+DATABASE_URL=postgres://user:password@host:5432/visto-easy?sslmode=require
+DATABASE_DSN=
+
+REDIS_URL=
+S3_ENDPOINT=
+S3_BUCKET=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+SENDGRID_API_KEY=
 ```
 
 ## Note architetturali
