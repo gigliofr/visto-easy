@@ -30,7 +30,7 @@ body {
 }
 
 .container {
-  width: min(1100px, 92vw);
+  width: min(1280px, 94vw);
   margin: 0 auto;
 }
 .footer a {
@@ -161,8 +161,8 @@ h1 {
 
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
   padding-bottom: 16px;
 }
 
@@ -170,8 +170,10 @@ h1 {
   background: linear-gradient(180deg, #ffffff, #f7f8fa);
   border: 1px solid #e5e7ed;
   border-radius: 22px;
-  padding: 18px;
+  padding: 22px;
   box-shadow: 0 8px 24px rgba(16, 17, 19, 0.06);
+  width: min(980px, 100%);
+  margin: 0 auto;
 }
 
 .panel.hidden {
@@ -316,7 +318,7 @@ textarea:focus {
 .list {
   display: grid;
   gap: 10px;
-  max-height: 280px;
+  max-height: 360px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -440,12 +442,21 @@ textarea:focus {
 }
 
 @media (max-width: 920px) {
-  .app-grid {
-    grid-template-columns: 1fr;
-  }
-
   .kpi-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 980px) {
+  #richiedente #formCreatePratica,
+  #richiedente #formDocUpload {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+  }
+
+  #richiedente #formCreatePratica button,
+  #richiedente #formDocUpload button {
+    grid-column: 1 / -1;
   }
 }
 
