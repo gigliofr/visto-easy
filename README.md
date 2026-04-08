@@ -28,11 +28,19 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
+- `GET /api/bo/report.csv`
 - `PATCH /api/bo/pratiche/{id}/stato`
 - `POST /api/bo/pratiche/{id}/link-pagamento`
 - `POST /api/bo/pratiche/{id}/invia-visto`
 - `GET /api/bo/dashboard/stats`
 - `POST /api/pagamento/webhook`
+
+## Query params utili (backoffice)
+
+- `page`, `page_size`
+- `sort_by`, `sort_order`
+- `/api/bo/pratiche`: `stato`, `priorita`, `tipo_visto`, `paese_dest`, `operatore_id`, `q`, `from`, `to`
+- `/api/bo/utenti`: `ruolo`, `q`
 
 ## Run locale
 

@@ -3,11 +3,14 @@ package httpapi
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -73,6 +76,7 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
 			r.Get("/pratiche", s.handleBOListPratiche)
+			r.Get("/report.csv", s.handleBOReportCSV)
 			r.Get("/pratiche/{id}", s.handleGetPratica)
 			r.Get("/pratiche/{id}/eventi", s.handleListEventiPratica)
 			r.Patch("/pratiche/{id}/stato", s.handleBOChangeStato)
@@ -399,6 +403,12 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 	all := s.store.ListAllPratiche()
 	filtered := make([]map[string]any, 0, len(all))
+	page, pageSize := parsePagination(r)
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
+	if sortOrder != "asc" {
+		sortOrder = "desc"
+	}
 
 	stato := strings.TrimSpace(r.URL.Query().Get("stato"))
 	tipoVisto := strings.TrimSpace(r.URL.Query().Get("tipo_visto"))
@@ -456,13 +466,48 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	sort.Slice(filtered, func(i, j int) bool {
+		pi := filtered[i]["pratica"].(model.Pratica)
+		pj := filtered[j]["pratica"].(model.Pratica)
+		less := false
+		switch sortBy {
+		case "codice":
+			less = pi.Codice < pj.Codice
+		case "stato":
+			less = string(pi.Stato) < string(pj.Stato)
+		case "priorita":
+			less = string(pi.Priorita) < string(pj.Priorita)
+		case "paese_dest":
+			less = strings.ToLower(pi.PaeseDest) < strings.ToLower(pj.PaeseDest)
+		default:
+			less = pi.CreatoIl.Before(pj.CreatoIl)
+		}
+		if sortOrder == "asc" {
+			return less
+		}
+		return !less
+	})
+
+	total := len(filtered)
+	start, end := paginateBounds(total, page, pageSize)
+	paged := filtered[start:end]
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": filtered,
-		"count": len(filtered),
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
 	})
 }
 
 func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
+	page, pageSize := parsePagination(r)
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
+	if sortOrder != "asc" {
+		sortOrder = "desc"
+	}
 	rolo := strings.TrimSpace(r.URL.Query().Get("ruolo"))
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	items := make([]model.Utente, 0)
@@ -478,7 +523,59 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, u)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+
+	sort.Slice(items, func(i, j int) bool {
+		less := false
+		switch sortBy {
+		case "email":
+			less = strings.ToLower(items[i].Email) < strings.ToLower(items[j].Email)
+		case "nome":
+			less = strings.ToLower(items[i].Nome) < strings.ToLower(items[j].Nome)
+		case "ruolo":
+			less = string(items[i].Ruolo) < string(items[j].Ruolo)
+		default:
+			less = items[i].CreatoIl.Before(items[j].CreatoIl)
+		}
+		if sortOrder == "asc" {
+			return less
+		}
+		return !less
+	})
+
+	total := len(items)
+	start, end := paginateBounds(total, page, pageSize)
+	paged := items[start:end]
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {
+	all := s.store.ListAllPratiche()
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=report_pratiche.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"id", "codice", "stato", "priorita", "tipo_visto", "paese_dest", "utente_id", "operatore_id", "creato_il", "aggiornato_il"})
+	for _, p := range all {
+		_ = cw.Write([]string{
+			p.ID,
+			p.Codice,
+			string(p.Stato),
+			string(p.Priorita),
+			p.TipoVisto,
+			p.PaeseDest,
+			p.UtenteID,
+			p.OperatoreID,
+			p.CreatoIl.Format(time.RFC3339),
+			p.AggiornatoIl.Format(time.RFC3339),
+		})
+	}
+	cw.Flush()
 }
 
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
@@ -629,23 +726,34 @@ func verifyStripeSignature(secret string, payload []byte, signatureHeader string
 	}
 	parts := strings.Split(signatureHeader, ",")
 	v1 := ""
+	ts := ""
 	for _, part := range parts {
 		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
 		if len(kv) != 2 {
 			continue
 		}
+		if kv[0] == "t" {
+			ts = kv[1]
+		}
 		if kv[0] == "v1" {
 			v1 = kv[1]
-			break
 		}
 	}
-	if v1 == "" {
+	if v1 == "" || ts == "" {
 		return false
 	}
+	timestamp, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return false
+	}
+	if delta := time.Since(time.Unix(timestamp, 0)); delta > 5*time.Minute || delta < -5*time.Minute {
+		return false
+	}
+	signedPayload := []byte(ts + "." + string(payload))
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write(payload)
+	_, _ = mac.Write(signedPayload)
 	expected := mac.Sum(nil)
-	provided, err := hexDecode(v1)
+	provided, err := hex.DecodeString(strings.TrimSpace(v1))
 	if err != nil {
 		return false
 	}
@@ -664,20 +772,36 @@ func isAllowedMime(v string) bool {
 	return allowed[v]
 }
 
-func hexDecode(v string) ([]byte, error) {
-	const hexdigits = "0123456789abcdef"
-	v = strings.ToLower(strings.TrimSpace(v))
-	if len(v)%2 != 0 {
-		return nil, errors.New("invalid hex")
-	}
-	out := make([]byte, len(v)/2)
-	for i := 0; i < len(v); i += 2 {
-		hi := strings.IndexByte(hexdigits, v[i])
-		lo := strings.IndexByte(hexdigits, v[i+1])
-		if hi < 0 || lo < 0 {
-			return nil, errors.New("invalid hex")
+func parsePagination(r *http.Request) (int, int) {
+	page := 1
+	pageSize := 25
+	if raw := strings.TrimSpace(r.URL.Query().Get("page")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			page = v
 		}
-		out[i/2] = byte((hi << 4) | lo)
 	}
-	return out, nil
+	if raw := strings.TrimSpace(r.URL.Query().Get("page_size")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			if v > 200 {
+				v = 200
+			}
+			pageSize = v
+		}
+	}
+	return page, pageSize
+}
+
+func paginateBounds(total, page, pageSize int) (int, int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	start := (page - 1) * pageSize
+	if start >= total {
+		return total, total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return start, end
 }
