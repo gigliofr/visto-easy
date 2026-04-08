@@ -106,4 +106,17 @@ func TestResetPasswordTokenIsOneTime(t *testing.T) {
 	if rrSecond.Code != http.StatusUnauthorized {
 		t.Fatalf("second reset with same token should fail: got=%d body=%s", rrSecond.Code, rrSecond.Body.String())
 	}
+
+	found := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_PASSWORD_RESET_REJECTED" {
+			if reason, ok := evt.Details["reason"].(string); ok && reason == "invalid_or_expired_token" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected AUTH_PASSWORD_RESET_REJECTED audit event")
+	}
 }

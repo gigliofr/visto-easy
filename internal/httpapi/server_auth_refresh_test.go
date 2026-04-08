@@ -64,6 +64,42 @@ func TestRefreshTokenRotationInvalidatesPreviousToken(t *testing.T) {
 	if !found {
 		t.Fatalf("expected AUTH_REFRESH_ROTATED audit event")
 	}
+
+	foundRejected := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_REFRESH_REJECTED" && evt.ActorID == "u-1" && evt.ResourceID == oldID {
+			foundRejected = true
+			break
+		}
+	}
+	if !foundRejected {
+		t.Fatalf("expected AUTH_REFRESH_REJECTED audit event for refresh reuse")
+	}
+}
+
+func TestRefreshInvalidTokenAuditEvent(t *testing.T) {
+	s, st, _ := newSecurityHTTPTestServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", strings.NewReader(`{"refresh_token":"not-a-valid-token"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid refresh token should be unauthorized: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	found := false
+	for _, evt := range st.ListAuditEvents() {
+		if evt.Action == "AUTH_REFRESH_REJECTED" {
+			if reason, ok := evt.Details["reason"].(string); ok && reason == "invalid_token" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected AUTH_REFRESH_REJECTED audit event with invalid_token reason")
+	}
 }
 
 func TestLogoutRevokesRefreshSession(t *testing.T) {

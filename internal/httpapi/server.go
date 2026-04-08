@@ -289,15 +289,38 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) { return }
 	c, err := s.tokens.Parse(req.RefreshToken)
 	if err != nil || c.Type != "refresh" {
+		_, _ = s.store.AddAuditEvent(model.AuditEvent{
+			Action:   "AUTH_REFRESH_REJECTED",
+			Resource: "refresh_session",
+			IP:       clientIP(r),
+			Details:  map[string]any{"reason": "invalid_token"},
+		})
 		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
 	if strings.TrimSpace(c.ID) == "" {
+		_, _ = s.store.AddAuditEvent(model.AuditEvent{
+			Action:    "AUTH_REFRESH_REJECTED",
+			Resource:  "refresh_session",
+			ActorID:   c.UserID,
+			ActorRole: c.Role,
+			IP:        clientIP(r),
+			Details:   map[string]any{"reason": "missing_session_id"},
+		})
 		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
 	session, err := s.store.GetRefreshSessionByID(c.ID)
 	if err != nil || session.Revoked || session.UserID != c.UserID || session.Role != c.Role {
+		_, _ = s.store.AddAuditEvent(model.AuditEvent{
+			Action:     "AUTH_REFRESH_REJECTED",
+			Resource:   "refresh_session",
+			ResourceID: c.ID,
+			ActorID:    c.UserID,
+			ActorRole:  c.Role,
+			IP:         clientIP(r),
+			Details:    map[string]any{"reason": "invalid_session"},
+		})
 		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
@@ -422,6 +445,14 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	resetRec, err := s.store.ConsumePasswordResetToken(token)
 	if err != nil {
+		_, _ = s.store.AddAuditEvent(model.AuditEvent{
+			Action:   "AUTH_PASSWORD_RESET_REJECTED",
+			Resource: "user",
+			IP:       clientIP(r),
+			Details: map[string]any{
+				"reason": "invalid_or_expired_token",
+			},
+		})
 		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
@@ -506,6 +537,7 @@ func (s *Server) handle2FAEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
+		s.recordAuditEvent(r, claims, "AUTH_2FA_ENABLE_REJECTED", "user", u.ID, map[string]any{"reason": "invalid_code"})
 		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
 		return
 	}
@@ -537,6 +569,7 @@ func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if u.TOTPEnabled && !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
+		s.recordAuditEvent(r, claims, "AUTH_2FA_DISABLE_REJECTED", "user", u.ID, map[string]any{"reason": "invalid_code"})
 		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
 		return
 	}
