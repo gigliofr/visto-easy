@@ -119,3 +119,90 @@ func TestBOAuditEventsCSV(t *testing.T) {
 		t.Fatalf("expected action in csv body, got=%s", rr.Body.String())
 	}
 }
+
+func TestBOAuditEventsQueryQIsCaseInsensitive(t *testing.T) {
+	s, st, token := newSecurityHTTPTestServer(t)
+
+	_, _ = st.AddAuditEvent(model.AuditEvent{
+		ActorID:    "bo-admin-1",
+		ActorRole:  string(model.RoleAdmin),
+		Action:     "PRATICA_REQUEST_DOCUMENT",
+		Resource:   "pratica",
+		ResourceID: "PRA-EDGE-01",
+		IP:         "198.51.100.50",
+		CreatoIl:   time.Now().UTC(),
+	})
+	_, _ = st.AddAuditEvent(model.AuditEvent{
+		ActorID:    "bo-admin-1",
+		ActorRole:  string(model.RoleAdmin),
+		Action:     "PAYMENT_REFUND",
+		Resource:   "payment",
+		ResourceID: "pay-edge-02",
+		IP:         "198.51.100.51",
+		CreatoIl:   time.Now().UTC().Add(1 * time.Second),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/bo/audit-events?q=praTica_request", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Items []model.AuditEvent `json:"items"`
+		Total int                `json:"total"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json decode failed: %v; body=%s", err, rr.Body.String())
+	}
+	if resp.Total != 1 || len(resp.Items) != 1 {
+		t.Fatalf("expected a single q-match, got total=%d items=%d", resp.Total, len(resp.Items))
+	}
+	if resp.Items[0].Action != "PRATICA_REQUEST_DOCUMENT" {
+		t.Fatalf("unexpected action in q-match: %+v", resp.Items[0])
+	}
+}
+
+func TestBOAuditEventsInvalidFromToAreIgnored(t *testing.T) {
+	s, st, token := newSecurityHTTPTestServer(t)
+
+	_, _ = st.AddAuditEvent(model.AuditEvent{
+		ActorID:    "bo-admin-1",
+		ActorRole:  string(model.RoleAdmin),
+		Action:     "PRATICA_CHANGE_STATE",
+		Resource:   "pratica",
+		ResourceID: "pra-11",
+		CreatoIl:   time.Now().UTC(),
+	})
+	_, _ = st.AddAuditEvent(model.AuditEvent{
+		ActorID:    "bo-admin-1",
+		ActorRole:  string(model.RoleAdmin),
+		Action:     "ADMIN_REVOKE_SESSION",
+		Resource:   "refresh_session",
+		ResourceID: "sess-22",
+		CreatoIl:   time.Now().UTC().Add(1 * time.Second),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/bo/audit-events?from=not-a-date&to=also-bad", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Items []model.AuditEvent `json:"items"`
+		Total int                `json:"total"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json decode failed: %v; body=%s", err, rr.Body.String())
+	}
+	if resp.Total != 2 || len(resp.Items) != 2 {
+		t.Fatalf("expected invalid from/to to be ignored, got total=%d items=%d", resp.Total, len(resp.Items))
+	}
+}
