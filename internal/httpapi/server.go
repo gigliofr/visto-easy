@@ -26,6 +26,7 @@ import (
 
 	"visto-easy/internal/auth"
 	"visto-easy/internal/model"
+	"visto-easy/internal/notifications"
 	storagepkg "visto-easy/internal/storage"
 	"visto-easy/internal/store"
 )
@@ -34,6 +35,7 @@ type Server struct {
 	store   store.DataStore
 	tokens  *auth.TokenManager
 	presign storagepkg.PresignService
+	mailer  notifications.EmailSender
 	authRL  *simpleRateLimiter
 	loginLT *loginLockTracker
 }
@@ -56,6 +58,7 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 		store:   st,
 		tokens:  tm,
 		presign: presign,
+		mailer:  notifications.NewEmailSenderFromEnv(),
 		authRL:  newSimpleRateLimiter(limitPerMinute, time.Minute),
 		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
 	}
@@ -316,6 +319,32 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 					Email:     email,
 					ExpiresAt: expiresAt,
 				})
+				resetURL := strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL"))
+				if resetURL != "" {
+					if strings.Contains(resetURL, "{token}") {
+						resetURL = strings.ReplaceAll(resetURL, "{token}", token)
+					} else {
+						sep := "?"
+						if strings.Contains(resetURL, "?") {
+							sep = "&"
+						}
+						resetURL = resetURL + sep + "token=" + token
+					}
+				}
+				textBody := "Abbiamo ricevuto una richiesta di reset password."
+				htmlBody := "<p>Abbiamo ricevuto una richiesta di reset password.</p>"
+				if resetURL != "" {
+					textBody += "\nUsa questo link: " + resetURL
+					htmlBody += "<p>Usa questo link: <a href=\"" + resetURL + "\">reset password</a></p>"
+				} else {
+					textBody += "\nToken: " + token
+					htmlBody += "<p>Token: <strong>" + token + "</strong></p>"
+				}
+				textBody += "\nScade: " + expiresAt.Format(time.RFC3339)
+				htmlBody += "<p>Scadenza: " + expiresAt.Format(time.RFC3339) + "</p>"
+				if err := s.sendEmail(email, "Reset password Visto Easy", textBody, htmlBody); err != nil {
+					s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "password_reset", Email: email, UserID: u.ID, IP: clientIP(r)})
+				}
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:    "PASSWORD_RESET_REQUESTED",
 					Outcome: "accepted",
@@ -625,6 +654,7 @@ func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Re
 		return
 	}
 	_, _ = s.store.ChangePraticaState(req.PraticaID, claimsFromCtx(r.Context()).UserID, model.StatoAttendePagamento, "link pagamento generato")
+	s.notifyPaymentLink(pay)
 	writeJSON(w, http.StatusCreated, pay)
 }
 
@@ -686,6 +716,7 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoInElaborazione, "generazione visto")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoEmesso, "visto emesso")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoCompletata, "visto consegnato")
+	s.notifyPagamentoCompletato(pay)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "processed", "event_id": info.EventID})
 }
 
@@ -1533,6 +1564,47 @@ func writeSSEEvent(w http.ResponseWriter, event string, payload any) {
 	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 }
 
+func (s *Server) sendEmail(to, subject, textBody, htmlBody string) error {
+	if s.mailer == nil {
+		return nil
+	}
+	return s.mailer.Send(to, subject, textBody, htmlBody)
+}
+
+func (s *Server) notifyPaymentLink(pay model.Pagamento) {
+	pratica, err := s.store.GetPratica(pay.PraticaID)
+	if err != nil {
+		return
+	}
+	utente, err := s.store.GetUserByID(pratica.UtenteID)
+	if err != nil || strings.TrimSpace(utente.Email) == "" {
+		return
+	}
+	subject := "Link pagamento pratica " + pratica.Codice
+	textBody := fmt.Sprintf("La tua pratica %s e' pronta per il pagamento.\nImporto: %.2f %s\nLink: %s", pratica.Codice, pay.Importo, strings.ToUpper(pay.Valuta), pay.LinkPagamento)
+	htmlBody := fmt.Sprintf("<p>La tua pratica <strong>%s</strong> e' pronta per il pagamento.</p><p>Importo: <strong>%.2f %s</strong></p><p><a href=\"%s\">Vai al pagamento</a></p>", pratica.Codice, pay.Importo, strings.ToUpper(pay.Valuta), pay.LinkPagamento)
+	if err := s.sendEmail(utente.Email, subject, textBody, htmlBody); err != nil {
+		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "payment_link", Email: utente.Email, UserID: utente.ID})
+	}
+}
+
+func (s *Server) notifyPagamentoCompletato(pay model.Pagamento) {
+	pratica, err := s.store.GetPratica(pay.PraticaID)
+	if err != nil {
+		return
+	}
+	utente, err := s.store.GetUserByID(pratica.UtenteID)
+	if err != nil || strings.TrimSpace(utente.Email) == "" {
+		return
+	}
+	subject := "Pagamento ricevuto e visto emesso"
+	textBody := fmt.Sprintf("Pagamento ricevuto per pratica %s. Il visto e' stato emesso.", pratica.Codice)
+	htmlBody := fmt.Sprintf("<p>Pagamento ricevuto per pratica <strong>%s</strong>.</p><p>Il visto e' stato emesso.</p>", pratica.Codice)
+	if err := s.sendEmail(utente.Email, subject, textBody, htmlBody); err != nil {
+		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "payment_completed", Email: utente.Email, UserID: utente.ID})
+	}
+}
+
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	var req struct { Stato model.StatoPratica `json:"stato"`; Nota string `json:"nota"` }
@@ -1613,6 +1685,7 @@ func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	_, _ = s.store.ChangePraticaState(chi.URLParam(r, "id"), claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
+	s.notifyPaymentLink(pay)
 	writeJSON(w, http.StatusCreated, pay)
 }
 

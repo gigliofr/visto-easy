@@ -11,6 +11,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Backoffice: lista pratiche, cambio stato, link pagamento, invio visto, stats dashboard
 - Pagamenti: creazione sessione, query stato, webhook `payment.succeeded`
 - Webhook pagamenti idempotente con deduplicazione `event_id`/`id`
+- Notifiche email transazionali via SendGrid (quando configurato)
 - Audit sicurezza login/rate-limit con endpoint backoffice
 - Denylist IP backoffice con persistenza datastore (riavvio-safe)
 - Macchina stati pratica con validazione transizioni
@@ -133,6 +134,10 @@ S3_USE_SSL=true
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 SENDGRID_API_KEY=
+SENDGRID_FROM_EMAIL=
+SENDGRID_FROM_NAME=Visto Easy
+SENDGRID_API_BASE=
+FRONTEND_RESET_PASSWORD_URL=
 
 # Hardening auth (opzionali)
 AUTH_RATE_LIMIT_RPM=30
@@ -149,6 +154,11 @@ SECURITY_ALLOW_IP_DEFAULT_TTL_MINUTES=240
 ## Note architetturali
 
 Questa versione implementa un MVP operativo con persistenza su MongoDB (document store) e placeholder per Redis/S3/Stripe/SendGrid.
+
+Notifiche email transazionali (se `SENDGRID_API_KEY` + `SENDGRID_FROM_EMAIL` sono valorizzati):
+- reset password richiesto
+- link pagamento pratica
+- conferma pagamento/visto emesso
 
 MongoDB richiesto all'avvio:
 
