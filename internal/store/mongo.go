@@ -500,6 +500,49 @@ func (s *MongoStore) ListDocumenti(praticaID string) ([]model.Documento, error) 
 	return p.Documenti, nil
 }
 
+func (s *MongoStore) GetDocumento(praticaID, documentoID string) (model.Documento, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return model.Documento{}, err
+	}
+	for _, d := range p.Documenti {
+		if d.ID == documentoID {
+			return d, nil
+		}
+	}
+	return model.Documento{}, ErrNotFound
+}
+
+func (s *MongoStore) DeleteDocumento(praticaID, documentoID string) (bool, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return false, err
+	}
+
+	removed := false
+	filtered := make([]model.Documento, 0, len(p.Documenti))
+	for _, d := range p.Documenti {
+		if d.ID == documentoID {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, d)
+	}
+	if !removed {
+		return false, nil
+	}
+
+	p.Documenti = filtered
+	p.AggiornatoIl = time.Now().UTC()
+	ctx, cancel := s.ctx()
+	defer cancel()
+	_, err = s.pratiche.ReplaceOne(ctx, bson.M{"id": praticaID}, p)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *MongoStore) CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error) {
 	if _, err := s.GetPratica(praticaID); err != nil {
 		return model.Pagamento{}, err

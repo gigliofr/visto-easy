@@ -239,6 +239,39 @@ func (s *MemoryStore) ListDocumenti(praticaID string) ([]model.Documento, error)
 	return p.Documenti, nil
 }
 
+func (s *MemoryStore) GetDocumento(praticaID, documentoID string) (model.Documento, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.pratiche[praticaID]
+	if !ok {
+		return model.Documento{}, ErrNotFound
+	}
+	for _, d := range p.Documenti {
+		if d.ID == documentoID {
+			return d, nil
+		}
+	}
+	return model.Documento{}, ErrNotFound
+}
+
+func (s *MemoryStore) DeleteDocumento(praticaID, documentoID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pratiche[praticaID]
+	if !ok {
+		return false, ErrNotFound
+	}
+	for i := range p.Documenti {
+		if p.Documenti[i].ID == documentoID {
+			p.Documenti = append(p.Documenti[:i], p.Documenti[i+1:]...)
+			p.AggiornatoIl = time.Now().UTC()
+			s.pratiche[praticaID] = p
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (s *MemoryStore) CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error) {
 	s.mu.Lock(); defer s.mu.Unlock()
 	if _, ok := s.pratiche[praticaID]; !ok { return model.Pagamento{}, ErrNotFound }

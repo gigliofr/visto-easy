@@ -88,6 +88,8 @@ func (s *Server) Router() http.Handler {
 			r.Post("/{id}/documenti/presign", s.handlePresignDocumento)
 			r.Post("/{id}/documenti", s.handleAddDocumento)
 			r.Get("/{id}/documenti", s.handleListDocumenti)
+			r.Get("/{id}/documenti/{docId}", s.handleGetDocumento)
+			r.Delete("/{id}/documenti/{docId}", s.handleDeleteDocumento)
 		})
 
 		r.Route("/api/pagamento", func(r chi.Router) {
@@ -428,10 +430,77 @@ func (s *Server) handlePresignDocumento(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleListDocumenti(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
+	p, err := s.store.GetPratica(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
 	docs, err := s.store.ListDocumenti(id)
 	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
 	writeJSON(w, http.StatusOK, docs)
+}
+
+func (s *Server) handleGetDocumento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	praticaID := chi.URLParam(r, "id")
+	docID := chi.URLParam(r, "docId")
+	p, err := s.store.GetPratica(praticaID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
+	d, err := s.store.GetDocumento(praticaID, docID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "documento non trovato")
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) handleDeleteDocumento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	praticaID := chi.URLParam(r, "id")
+	docID := chi.URLParam(r, "docId")
+	p, err := s.store.GetPratica(praticaID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	if claims.Role == string(model.RoleRichiedente) {
+		if p.UtenteID != claims.UserID {
+			writeErr(w, http.StatusForbidden, "accesso negato")
+			return
+		}
+		if p.Stato != model.StatoBozza {
+			writeErr(w, http.StatusForbidden, "eliminazione documenti consentita solo in bozza")
+			return
+		}
+	}
+
+	deleted, err := s.store.DeleteDocumento(praticaID, docID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore eliminazione documento")
+		return
+	}
+	if !deleted {
+		writeErr(w, http.StatusNotFound, "documento non trovato")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleListEventiPratica(w http.ResponseWriter, r *http.Request) {

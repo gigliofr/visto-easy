@@ -20,6 +20,8 @@ type DataStore interface {
 	RequestDocumento(praticaID, actorID, documento, note string) (model.Pratica, error)
 	AddDocumento(praticaID string, d model.Documento) (model.Documento, error)
 	ListDocumenti(praticaID string) ([]model.Documento, error)
+	GetDocumento(praticaID, documentoID string) (model.Documento, error)
+	DeleteDocumento(praticaID, documentoID string) (bool, error)
 	CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error)
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)

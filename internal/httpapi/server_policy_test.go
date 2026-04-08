@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,33 +11,122 @@ import (
 )
 
 type fakePolicyStore struct {
-	allowed []model.AllowedIP
-	blocked []model.BlockedIP
+	allowed        []model.AllowedIP
+	blocked        []model.BlockedIP
 	securityEvents []model.SecurityEvent
+	users          map[string]model.Utente
+	usersByEmail   map[string]string
+	pratiche       map[string]model.Pratica
+	seq            int
 }
 
 func newPolicyTestServer() *Server {
-	return &Server{store: &fakePolicyStore{}}
+	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}}}
 }
 
-func (f *fakePolicyStore) CreateUser(u model.Utente) (model.Utente, error) { return model.Utente{}, store.ErrNotFound }
-func (f *fakePolicyStore) ListUsers() []model.Utente { return nil }
-func (f *fakePolicyStore) GetUserByEmail(email string) (model.Utente, error) {
-	return model.Utente{}, store.ErrNotFound
+func (f *fakePolicyStore) nextID(prefix string) string {
+	f.seq++
+	return fmt.Sprintf("%s-%d", prefix, f.seq)
 }
-func (f *fakePolicyStore) GetUserByID(id string) (model.Utente, error) { return model.Utente{}, store.ErrNotFound }
+
+func (f *fakePolicyStore) CreateUser(u model.Utente) (model.Utente, error) {
+	if f.users == nil {
+		f.users = map[string]model.Utente{}
+	}
+	if f.usersByEmail == nil {
+		f.usersByEmail = map[string]string{}
+	}
+	email := strings.ToLower(strings.TrimSpace(u.Email))
+	if email == "" {
+		return model.Utente{}, store.ErrForbiddenState
+	}
+	if _, ok := f.usersByEmail[email]; ok {
+		return model.Utente{}, store.ErrAlreadyExists
+	}
+	now := time.Now().UTC()
+	u.ID = f.nextID("usr")
+	u.Email = email
+	u.CreatoIl = now
+	u.AggiornatoIl = now
+	u.Attivo = true
+	u.EmailVerificata = true
+	f.users[u.ID] = u
+	f.usersByEmail[email] = u.ID
+	return u, nil
+}
+func (f *fakePolicyStore) ListUsers() []model.Utente {
+	out := make([]model.Utente, 0, len(f.users))
+	for _, u := range f.users {
+		out = append(out, u)
+	}
+	return out
+}
+func (f *fakePolicyStore) GetUserByEmail(email string) (model.Utente, error) {
+	id, ok := f.usersByEmail[strings.ToLower(strings.TrimSpace(email))]
+	if !ok {
+		return model.Utente{}, store.ErrNotFound
+	}
+	u, ok := f.users[id]
+	if !ok {
+		return model.Utente{}, store.ErrNotFound
+	}
+	return u, nil
+}
+func (f *fakePolicyStore) GetUserByID(id string) (model.Utente, error) {
+	u, ok := f.users[id]
+	if !ok {
+		return model.Utente{}, store.ErrNotFound
+	}
+	return u, nil
+}
 func (f *fakePolicyStore) CreatePratica(p model.Pratica, actorID string) (model.Pratica, error) {
-	return model.Pratica{}, store.ErrNotFound
+	if f.pratiche == nil {
+		f.pratiche = map[string]model.Pratica{}
+	}
+	now := time.Now().UTC()
+	p.ID = f.nextID("pra")
+	p.Codice = f.nextID("VST")
+	p.Stato = model.StatoBozza
+	p.Priorita = model.PrioritaNormale
+	p.Valuta = "EUR"
+	p.CreatoIl = now
+	p.AggiornatoIl = now
+	f.pratiche[p.ID] = p
+	return p, nil
 }
 func (f *fakePolicyStore) ListPraticheByUser(userID string) []model.Pratica { return nil }
-func (f *fakePolicyStore) ListAllPratiche() []model.Pratica { return nil }
-func (f *fakePolicyStore) GetPratica(id string) (model.Pratica, error) { return model.Pratica{}, store.ErrNotFound }
+func (f *fakePolicyStore) ListAllPratiche() []model.Pratica {
+	out := make([]model.Pratica, 0, len(f.pratiche))
+	for _, p := range f.pratiche {
+		out = append(out, p)
+	}
+	return out
+}
+func (f *fakePolicyStore) GetPratica(id string) (model.Pratica, error) {
+	p, ok := f.pratiche[id]
+	if !ok {
+		return model.Pratica{}, store.ErrNotFound
+	}
+	return p, nil
+}
 func (f *fakePolicyStore) UpdatePraticaAsDraft(id, userID string, data map[string]any) (model.Pratica, error) {
 	return model.Pratica{}, store.ErrNotFound
 }
 func (f *fakePolicyStore) DeletePraticaAsDraft(id, userID string) error { return store.ErrNotFound }
 func (f *fakePolicyStore) SubmitPratica(id, userID string) (model.Pratica, error) {
-	return model.Pratica{}, store.ErrNotFound
+	p, ok := f.pratiche[id]
+	if !ok {
+		return model.Pratica{}, store.ErrNotFound
+	}
+	if p.UtenteID != userID || p.Stato != model.StatoBozza {
+		return model.Pratica{}, store.ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	p.Stato = model.StatoInviata
+	p.InviatoIl = &now
+	p.AggiornatoIl = now
+	f.pratiche[id] = p
+	return p, nil
 }
 func (f *fakePolicyStore) ChangePraticaState(id string, fromActor string, next model.StatoPratica, note string) (model.Pratica, error) {
 	return model.Pratica{}, store.ErrNotFound
@@ -50,10 +141,50 @@ func (f *fakePolicyStore) RequestDocumento(praticaID, actorID, documento, note s
 	return model.Pratica{}, store.ErrNotFound
 }
 func (f *fakePolicyStore) AddDocumento(praticaID string, d model.Documento) (model.Documento, error) {
-	return model.Documento{}, store.ErrNotFound
+	p, ok := f.pratiche[praticaID]
+	if !ok {
+		return model.Documento{}, store.ErrNotFound
+	}
+	d.ID = f.nextID("doc")
+	d.PraticaID = praticaID
+	d.CaricatoIl = time.Now().UTC()
+	d.StatoValidazione = "PENDING"
+	p.Documenti = append(p.Documenti, d)
+	f.pratiche[praticaID] = p
+	return d, nil
 }
 func (f *fakePolicyStore) ListDocumenti(praticaID string) ([]model.Documento, error) {
-	return nil, store.ErrNotFound
+	p, ok := f.pratiche[praticaID]
+	if !ok {
+		return nil, store.ErrNotFound
+	}
+	return p.Documenti, nil
+}
+func (f *fakePolicyStore) GetDocumento(praticaID, documentoID string) (model.Documento, error) {
+	p, ok := f.pratiche[praticaID]
+	if !ok {
+		return model.Documento{}, store.ErrNotFound
+	}
+	for _, d := range p.Documenti {
+		if d.ID == documentoID {
+			return d, nil
+		}
+	}
+	return model.Documento{}, store.ErrNotFound
+}
+func (f *fakePolicyStore) DeleteDocumento(praticaID, documentoID string) (bool, error) {
+	p, ok := f.pratiche[praticaID]
+	if !ok {
+		return false, store.ErrNotFound
+	}
+	for i := range p.Documenti {
+		if p.Documenti[i].ID == documentoID {
+			p.Documenti = append(p.Documenti[:i], p.Documenti[i+1:]...)
+			f.pratiche[praticaID] = p
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakePolicyStore) CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error) {
 	return model.Pagamento{}, store.ErrNotFound

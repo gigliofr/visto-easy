@@ -28,6 +28,8 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `POST /api/pratiche/{id}/documenti`
 - `POST /api/pratiche/{id}/documenti/presign`
 - `GET /api/pratiche/{id}/documenti`
+- `GET /api/pratiche/{id}/documenti/{docId}`
+- `DELETE /api/pratiche/{id}/documenti/{docId}`
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
