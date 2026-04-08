@@ -189,6 +189,12 @@ h1 {
   font-size: 0.92rem;
 }
 
+.helper-text {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .tabs {
   display: flex;
   gap: 8px;

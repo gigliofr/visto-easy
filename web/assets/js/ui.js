@@ -28,6 +28,9 @@ export function renderSessionInfo() {
   els.sessionRole.textContent = `Ruolo: ${currentRole}`;
   els.sessionUser.textContent = `Utente: ${email}`;
   els.apiBaseInput.value = state.apiBase;
+  const loggedIn = Boolean(state.accessToken);
+  els.btnRefreshSession.hidden = !loggedIn;
+  els.btnLogout.hidden = !loggedIn;
 }
 
 export function notify(kind, text) {
@@ -98,24 +101,26 @@ export function setSectionFromHash() {
 
 export function applyRoleGuards() {
   if (!state.accessToken) {
+    els.panelAuth.classList.remove('hidden');
     els.panelRichiedente.classList.add('hidden');
     els.panelBackoffice.classList.add('hidden');
     return;
   }
   if (hasRichiedenteRole()) {
     if (window.location.hash === '#backoffice') window.location.hash = '#richiedente';
-    els.panelAuth.classList.remove('hidden');
+    els.panelAuth.classList.add('hidden');
     els.panelRichiedente.classList.remove('hidden');
     els.panelBackoffice.classList.add('hidden');
     return;
   }
   if (hasBackofficeRole()) {
     if (window.location.hash === '#richiedente') window.location.hash = '#backoffice';
-    els.panelAuth.classList.remove('hidden');
+    els.panelAuth.classList.add('hidden');
     els.panelRichiedente.classList.add('hidden');
     els.panelBackoffice.classList.remove('hidden');
     return;
   }
+  els.panelAuth.classList.remove('hidden');
   els.panelRichiedente.classList.add('hidden');
   els.panelBackoffice.classList.add('hidden');
 }

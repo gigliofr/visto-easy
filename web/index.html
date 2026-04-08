@@ -19,12 +19,11 @@
       <div class="flow-nav">
         <a class="btn btn-solid" href="#auth">Inizia ora</a>
         <a class="btn btn-ghost" href="#richiedente">Area Richiedente</a>
-        <a class="btn btn-ghost" href="/backoffice">Backoffice</a>
       </div>
       <div class="hero-meta">
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
-        <button class="btn btn-ghost" id="btnRefreshSession" type="button">Aggiorna sessione</button>
+        <button class="btn btn-ghost" id="btnRefreshSession" type="button" title="Rinnova il token di accesso senza rifare il login">Rinnova accesso</button>
         <button class="btn btn-solid" id="btnLogout" type="button">Esci</button>
       </div>
 
@@ -93,7 +92,7 @@
       <article class="panel" id="richiedente">
         <div class="panel-head">
           <h2>Area Richiedente</h2>
-          <p>Crea pratica, gestisci documenti e invia in revisione.</p>
+          <p>Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
         </div>
         <form id="formCreatePratica" class="inline-form">
           <label>Tipo visto
@@ -111,8 +110,9 @@
               <option value="" disabled selected>Caricamento paesi...</option>
             </select>
           </label>
-          <button class="btn btn-solid" type="submit">Nuova pratica</button>
+          <button class="btn btn-solid" type="submit">Crea nuova pratica</button>
         </form>
+        <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai qui sotto e potrai allegare i documenti.</p>
 
         <div class="toolbar">
           <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
@@ -120,7 +120,11 @@
         <div id="miePratiche" class="list"></div>
 
         <form id="formDocUpload" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
+          <label>Pratica da aggiornare
+            <select name="id" id="docPraticaSelect" required>
+              <option value="" disabled selected>Prima crea o aggiorna una pratica</option>
+            </select>
+          </label>
           <label>Tipo documento
             <select name="tipo" required>
               <option value="" disabled selected>Seleziona documento</option>

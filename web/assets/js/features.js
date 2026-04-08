@@ -94,12 +94,32 @@ function wireTabs() {
   });
 }
 
-async function loadMiePratiche() {
+function populateDocPraticaSelect(pratiche, preferredID = '') {
+  const select = document.getElementById('docPraticaSelect');
+  if (!select) return;
+
+  if (!pratiche || pratiche.length === 0) {
+    select.innerHTML = '<option value="" disabled selected>Nessuna pratica disponibile</option>';
+    return;
+  }
+
+  select.innerHTML = [
+    '<option value="" disabled>Seleziona una pratica</option>',
+    ...pratiche.map((p) => `<option value="${p.id}">${p.codice || p.id} - ${p.stato || '-'}</option>`),
+  ].join('');
+
+  const currentID = preferredID || select.value;
+  const selected = pratiche.find((p) => p.id === currentID)?.id || pratiche[0].id;
+  select.value = selected;
+}
+
+async function loadMiePratiche(preferredPraticaID = '') {
   if (!hasRichiedenteRole()) {
     notify('err', 'Azione riservata al ruolo RICHIEDENTE');
     return;
   }
   const data = await api('/api/pratiche/');
+  populateDocPraticaSelect(data, preferredPraticaID);
   renderList(els.miePratiche, data, (p) => `
     <article class="list-item">
       <h3>${p.codice || p.id} - ${p.stato}</h3>
@@ -144,8 +164,10 @@ async function loadMiePratiche() {
       try {
         await withBusy(ev.currentTarget, async () => {
           const docs = await api(`/api/pratiche/${praticaID}/documenti`);
+          const select = document.getElementById('docPraticaSelect');
+          if (select) select.value = praticaID;
           out(`Documenti pratica ${praticaID}`, docs);
-          notify('ok', `Documenti caricati: ${docs.length || 0}`);
+          notify('ok', `Pratica selezionata per upload documenti: ${praticaID}`);
         });
       } catch (err) {
         notify('err', extractErrMessage(err));
@@ -257,6 +279,8 @@ function wireForms() {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
         setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user });
+        if (data.user?.ruolo === 'RICHIEDENTE') window.location.hash = '#richiedente';
+        if (data.user?.ruolo === 'BACKOFFICE') window.location.hash = '#backoffice';
         renderSessionInfo();
         applyRoleGuards();
         out('Login completato', { user: data.user });
@@ -372,7 +396,8 @@ function wireForms() {
         });
         out('Pratica creata', data);
         notify('ok', 'Pratica creata');
-        await loadMiePratiche();
+        const createdID = data.id || data.pratica?.id || '';
+        await loadMiePratiche(createdID);
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -393,6 +418,10 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
+        if (!payload.id) {
+          notify('err', 'Seleziona prima una pratica');
+          return;
+        }
         const data = await api(`/api/pratiche/${payload.id}/documenti`, {
           method: 'POST',
           body: JSON.stringify({
@@ -561,6 +590,7 @@ function wireSessionButtons() {
           body: JSON.stringify({ refresh_token: state.refreshToken }),
         });
         clearSession();
+        window.location.hash = '#auth';
         renderSessionInfo();
         applyRoleGuards();
         out('Logout server', data);
