@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -131,5 +132,110 @@ func TestSecurityAlertsStreamSendsReadyAndAlert(t *testing.T) {
 	}
 	if !strings.Contains(body, "event: security_alert") {
 		t.Fatalf("missing security_alert SSE event: body=%s", body)
+	}
+}
+
+func TestBOSecurityEventsStatsTopFailedIPsOrder(t *testing.T) {
+	t.Setenv("SECURITY_ALERT_WINDOW_MINUTES", "15")
+	t.Setenv("SECURITY_ALERT_FAILED_THRESHOLD", "3")
+
+	s, st, token := newSecurityHTTPTestServer(t)
+	now := time.Now().UTC()
+	st.securityEvents = []model.SecurityEvent{
+		{ID: "e1", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", IP: "203.0.113.9", CreatoIl: now.Add(-2 * time.Minute)},
+		{ID: "e2", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", IP: "203.0.113.8", CreatoIl: now.Add(-90 * time.Second)},
+		{ID: "e3", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", IP: "203.0.113.9", CreatoIl: now.Add(-45 * time.Second)},
+		{ID: "e4", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", IP: "203.0.113.7", CreatoIl: now.Add(-20 * time.Second)},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/bo/security-events/stats", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	resp := decodeMap(t, rr)
+	topRaw, ok := resp["top_failed_ips"].([]any)
+	if !ok || len(topRaw) < 2 {
+		t.Fatalf("unexpected top_failed_ips payload: %#v", resp)
+	}
+	first, ok := topRaw[0].(map[string]any)
+	if !ok {
+		t.Fatalf("invalid first top entry: %#v", topRaw[0])
+	}
+	if first["key"] != "203.0.113.9" || first["count"] != float64(2) {
+		t.Fatalf("unexpected first top entry: %#v", first)
+	}
+	if resp["high_risk_detected"] != true {
+		t.Fatalf("expected high_risk_detected=true: %#v", resp)
+	}
+}
+
+func TestBOSecurityEventsCSVFiltersAndSortsByRecent(t *testing.T) {
+	s, st, token := newSecurityHTTPTestServer(t)
+	now := time.Now().UTC()
+	st.securityEvents = []model.SecurityEvent{
+		{ID: "e-old", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", Email: "a@example.com", IP: "203.0.113.10", CreatoIl: now.Add(-3 * time.Minute)},
+		{ID: "e-mid", Type: "IP_BLOCKED", Outcome: "manual", UserID: "admin-1", IP: "203.0.113.11", CreatoIl: now.Add(-2 * time.Minute)},
+		{ID: "e-new", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", Email: "b@example.com", IP: "203.0.113.12", CreatoIl: now.Add(-1 * time.Minute)},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/bo/security-events/report.csv?type=login_failed", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(strings.ToLower(ct), "text/csv") {
+		t.Fatalf("unexpected content-type: %s", ct)
+	}
+
+	rows, err := csv.NewReader(strings.NewReader(rr.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("invalid csv: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected header + 2 rows, got=%d body=%s", len(rows), rr.Body.String())
+	}
+	if rows[1][0] != "e-new" || rows[2][0] != "e-old" {
+		t.Fatalf("expected rows sorted by recente desc, got row1=%v row2=%v", rows[1], rows[2])
+	}
+	if rows[1][1] != "LOGIN_FAILED" || rows[2][1] != "LOGIN_FAILED" {
+		t.Fatalf("unexpected filtered types in csv: row1=%v row2=%v", rows[1], rows[2])
+	}
+}
+
+func TestSecurityAlertsStreamIgnoresNonLoginAndOldLockedEvents(t *testing.T) {
+	t.Setenv("SECURITY_ALERT_WINDOW_MINUTES", "1")
+	t.Setenv("SECURITY_ALERT_FAILED_THRESHOLD", "2")
+
+	s, st, token := newSecurityHTTPTestServer(t)
+	now := time.Now().UTC()
+	st.securityEvents = []model.SecurityEvent{
+		{ID: "e-old-locked", Type: "LOGIN_LOCKED", Outcome: "blocked", IP: "203.0.113.20", CreatoIl: now.Add(-3 * time.Minute)},
+		{ID: "e-non-login", Type: "IP_BLOCKED", Outcome: "manual", IP: "203.0.113.21", CreatoIl: now.Add(-10 * time.Second)},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/api/bo/security-events/stream", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	body := rr.Body.String()
+	if !strings.Contains(body, "event: security_alert") {
+		t.Fatalf("missing security_alert SSE event: body=%s", body)
+	}
+	if !strings.Contains(body, `"severity":"ok"`) {
+		t.Fatalf("expected severity ok snapshot: body=%s", body)
+	}
+	if !strings.Contains(body, `"recent_failed_logins":0`) || !strings.Contains(body, `"recent_locked_logins":0`) {
+		t.Fatalf("expected zero recent login alerts in snapshot: body=%s", body)
 	}
 }
