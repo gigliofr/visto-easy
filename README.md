@@ -34,9 +34,11 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/bo/security/allowed-ips`
 - `POST /api/bo/security/allowed-ips/allow`
 - `POST /api/bo/security/allowed-ips/revoke`
+- `POST /api/bo/security/allowed-ips/revoke-bulk`
 - `GET /api/bo/security/blocked-ips`
 - `POST /api/bo/security/blocked-ips/block`
 - `POST /api/bo/security/blocked-ips/unblock`
+- `POST /api/bo/security/blocked-ips/unblock-bulk`
 - `GET /api/bo/security-events`
 - `GET /api/bo/security-events/stats`
 - `GET /api/bo/security-events/stream`
@@ -69,9 +71,11 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 Payload blocklist IP:
 - `POST /api/bo/security/allowed-ips/allow`: `{ "ip": "10.0.0.0/24", "reason": "trusted office", "ttl_minutes": 240 }`
 - `POST /api/bo/security/allowed-ips/revoke`: `{ "ip": "10.0.0.0/24" }`
+- `POST /api/bo/security/allowed-ips/revoke-bulk`: `{ "targets": ["10.0.0.0/24", "10.0.1.4"] }` oppure `{ "revoke_all": true }`
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "1.2.3.4", "reason": "bruteforce", "ttl_minutes": 120 }`
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "203.0.113.0/24", "reason": "abuse subnet", "ttl_minutes": 180 }`
 - `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }` oppure `{ "ip": "203.0.113.0/24" }`
+- `POST /api/bo/security/blocked-ips/unblock-bulk`: `{ "targets": ["1.2.3.4", "203.0.113.0/24"] }` oppure `{ "unblock_all": true }`
 
 ## Run locale
 

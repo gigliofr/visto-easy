@@ -102,9 +102,11 @@ func (s *Server) Router() http.Handler {
 			r.Get("/security/allowed-ips", s.handleBOListAllowedIPs)
 			r.Post("/security/allowed-ips/allow", s.handleBOAllowIP)
 			r.Post("/security/allowed-ips/revoke", s.handleBORevokeAllowedIP)
+			r.Post("/security/allowed-ips/revoke-bulk", s.handleBORevokeAllowedIPBulk)
 			r.Get("/security/blocked-ips", s.handleBOListBlockedIPs)
 			r.Post("/security/blocked-ips/block", s.handleBOBlockIP)
 			r.Post("/security/blocked-ips/unblock", s.handleBOUnblockIP)
+			r.Post("/security/blocked-ips/unblock-bulk", s.handleBOUnblockIPBulk)
 			r.Get("/security-events", s.handleBOSecurityEvents)
 			r.Get("/security-events/stats", s.handleBOSecurityEventsStats)
 			r.Get("/security-events/stream", s.handleBOSecurityAlertsStream)
@@ -857,6 +859,64 @@ func (s *Server) handleBORevokeAllowedIP(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "ip": target})
 }
 
+func (s *Server) handleBORevokeAllowedIPBulk(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		Targets   []string `json:"targets"`
+		RevokeAll bool     `json:"revoke_all"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	targets := make([]string, 0)
+	if req.RevokeAll {
+		for _, item := range s.store.ListAllowedIPs() {
+			targets = append(targets, item.IP)
+		}
+	} else {
+		targets = req.Targets
+	}
+
+	removed := make([]string, 0)
+	notFound := make([]string, 0)
+	invalid := make([]string, 0)
+	for _, raw := range targets {
+		target, err := normalizeBlockTarget(raw)
+		if err != nil {
+			invalid = append(invalid, strings.TrimSpace(raw))
+			continue
+		}
+		ok, err := s.store.RemoveAllowedIP(target)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
+			return
+		}
+		if ok {
+			removed = append(removed, target)
+			s.recordSecurityEvent(model.SecurityEvent{
+				Type:    "IP_ALLOW_REVOKED",
+				Outcome: "bulk",
+				UserID:  claims.UserID,
+				IP:      target,
+			})
+		} else {
+			notFound = append(notFound, target)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"removed":   removed,
+		"not_found": notFound,
+		"invalid":   invalid,
+		"count": map[string]any{
+			"removed":   len(removed),
+			"not_found": len(notFound),
+			"invalid":   len(invalid),
+		},
+	})
+}
+
 func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	var req struct {
@@ -938,6 +998,64 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 		IP:      target,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "unblocked", "ip": target})
+}
+
+func (s *Server) handleBOUnblockIPBulk(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		Targets    []string `json:"targets"`
+		UnblockAll bool     `json:"unblock_all"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	targets := make([]string, 0)
+	if req.UnblockAll {
+		for _, item := range s.store.ListBlockedIPs() {
+			targets = append(targets, item.IP)
+		}
+	} else {
+		targets = req.Targets
+	}
+
+	removed := make([]string, 0)
+	notFound := make([]string, 0)
+	invalid := make([]string, 0)
+	for _, raw := range targets {
+		target, err := normalizeBlockTarget(raw)
+		if err != nil {
+			invalid = append(invalid, strings.TrimSpace(raw))
+			continue
+		}
+		ok, err := s.store.RemoveBlockedIP(target)
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "errore aggiornamento denylist")
+			return
+		}
+		if ok {
+			removed = append(removed, target)
+			s.recordSecurityEvent(model.SecurityEvent{
+				Type:    "IP_UNBLOCKED",
+				Outcome: "bulk",
+				UserID:  claims.UserID,
+				IP:      target,
+			})
+		} else {
+			notFound = append(notFound, target)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"removed":   removed,
+		"not_found": notFound,
+		"invalid":   invalid,
+		"count": map[string]any{
+			"removed":   len(removed),
+			"not_found": len(notFound),
+			"invalid":   len(invalid),
+		},
+	})
 }
 
 func (s *Server) handleBOGetSecurityEvent(w http.ResponseWriter, r *http.Request) {
