@@ -595,6 +595,18 @@ func (s *MongoStore) ListSecurityEvents() []model.SecurityEvent {
 	return out
 }
 
+func (s *MongoStore) GetSecurityEventByID(id string) (model.SecurityEvent, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	var evt model.SecurityEvent
+	err := s.securityEvents.FindOne(ctx, bson.M{"id": id}).Decode(&evt)
+	if errorsIsNotFound(err) {
+		return model.SecurityEvent{}, ErrNotFound
+	}
+	return evt, err
+}
+
 func errorsIsNotFound(err error) bool {
 	return err == mongo.ErrNoDocuments
 }

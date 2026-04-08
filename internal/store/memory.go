@@ -309,3 +309,14 @@ func (s *MemoryStore) ListSecurityEvents() []model.SecurityEvent {
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatoIl.After(out[j].CreatoIl) })
 	return out
 }
+
+func (s *MemoryStore) GetSecurityEventByID(id string) (model.SecurityEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, evt := range s.securityEvents {
+		if evt.ID == id {
+			return evt, nil
+		}
+	}
+	return model.SecurityEvent{}, ErrNotFound
+}

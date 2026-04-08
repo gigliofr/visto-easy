@@ -31,6 +31,8 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
 - `GET /api/bo/security-events`
+- `GET /api/bo/security-events/{id}`
+- `GET /api/bo/security-events/report.csv`
 - `GET /api/bo/report.csv`
 - `GET /api/bo/notifications/stream`
 - `PATCH /api/bo/pratiche/{id}/stato`
@@ -51,6 +53,7 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `/api/bo/pratiche`: `stato`, `priorita`, `tipo_visto`, `paese_dest`, `operatore_id`, `q`, `from`, `to`
 - `/api/bo/utenti`: `ruolo`, `q`
 - `/api/bo/security-events`: `type`, `outcome`, `q`, `from`, `to`, `page`, `page_size`
+- `/api/bo/security-events/report.csv`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
 
 ## Run locale

@@ -100,6 +100,8 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
 			r.Get("/security-events", s.handleBOSecurityEvents)
+			r.Get("/security-events/report.csv", s.handleBOSecurityEventsCSV)
+			r.Get("/security-events/{id}", s.handleBOGetSecurityEvent)
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/report.csv", s.handleBOReportCSV)
 			r.Get("/notifications/stream", s.handleBONotificationsStream)
@@ -686,6 +688,56 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) {
 	page, pageSize := parsePagination(r)
+	filtered := s.filterSecurityEvents(r)
+	total := len(filtered)
+	start, end := paginateBounds(total, page, pageSize)
+	paged := filtered[start:end]
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+func (s *Server) handleBOGetSecurityEvent(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "id evento non valido")
+		return
+	}
+	evt, err := s.store.GetSecurityEventByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "evento sicurezza non trovato")
+		return
+	}
+	writeJSON(w, http.StatusOK, evt)
+}
+
+func (s *Server) handleBOSecurityEventsCSV(w http.ResponseWriter, r *http.Request) {
+	items := s.filterSecurityEvents(r)
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=security_events.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"id", "type", "outcome", "email", "user_id", "ip", "user_agent", "creato_il"})
+	for _, evt := range items {
+		_ = cw.Write([]string{
+			evt.ID,
+			evt.Type,
+			evt.Outcome,
+			evt.Email,
+			evt.UserID,
+			evt.IP,
+			evt.UserAgent,
+			evt.CreatoIl.Format(time.RFC3339),
+		})
+	}
+	cw.Flush()
+}
+
+func (s *Server) filterSecurityEvents(r *http.Request) []model.SecurityEvent {
 	eventType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
 	outcome := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("outcome")))
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
@@ -717,17 +769,7 @@ func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].CreatoIl.After(filtered[j].CreatoIl) })
-	total := len(filtered)
-	start, end := paginateBounds(total, page, pageSize)
-	paged := filtered[start:end]
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items":     paged,
-		"count":     len(paged),
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	return filtered
 }
 
 func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {

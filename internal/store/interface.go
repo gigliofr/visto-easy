@@ -26,4 +26,5 @@ type DataStore interface {
 	MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error)
 	AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error)
 	ListSecurityEvents() []model.SecurityEvent
+	GetSecurityEventByID(id string) (model.SecurityEvent, error)
 }
