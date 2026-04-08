@@ -15,11 +15,11 @@ import (
 )
 
 type Server struct {
-	store  *store.MemoryStore
+	store  store.DataStore
 	tokens *auth.TokenManager
 }
 
-func NewServer(st *store.MemoryStore, tm *auth.TokenManager) *Server {
+func NewServer(st store.DataStore, tm *auth.TokenManager) *Server {
 	return &Server{store: st, tokens: tm}
 }
 

@@ -72,5 +72,11 @@ SENDGRID_API_KEY=
 
 ## Note architetturali
 
-Questa versione implementa un MVP operativo in memoria (senza PostgreSQL/Redis/S3 reali).
-Gli endpoint e i contratti sono già strutturati per la successiva integrazione dei servizi esterni previsti dalla specifica.
+Questa versione implementa un MVP operativo con persistenza su MongoDB (document store) e placeholder per Redis/S3/Stripe/SendGrid.
+
+MongoDB richiesto all'avvio:
+
+```bash
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB_NAME=visto-easy
+```
