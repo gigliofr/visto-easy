@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.*
+*.exe
+*.exe~
+*.log
+coverage.*
+.vscode
+.idea
