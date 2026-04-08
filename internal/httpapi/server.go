@@ -104,6 +104,7 @@ func (s *Server) Router() http.Handler {
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
+			r.Post("/pagamenti/{token}/rimborso", s.handleBORefundPagamento)
 			r.Get("/security/allowed-ips", s.handleBOListAllowedIPs)
 			r.Post("/security/allowed-ips/allow", s.handleBOAllowIP)
 			r.Post("/security/allowed-ips/revoke", s.handleBORevokeAllowedIP)
@@ -1613,6 +1614,57 @@ func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Requ
 	}
 	_, _ = s.store.ChangePraticaState(chi.URLParam(r, "id"), claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
 	writeJSON(w, http.StatusCreated, pay)
+}
+
+func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	token := strings.TrimSpace(chi.URLParam(r, "token"))
+	if token == "" {
+		writeErr(w, http.StatusBadRequest, "token pagamento non valido")
+		return
+	}
+	var req struct {
+		Amount float64 `json:"amount"`
+		Reason string  `json:"reason"`
+	}
+	if r.ContentLength > 0 {
+		if !decodeJSON(w, r, &req) {
+			return
+		}
+	}
+
+	pay, err := s.store.RefundPaymentByToken(token)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pagamento non trovato")
+			return
+		}
+		if errors.Is(err, store.ErrInvalidState) {
+			writeErr(w, http.StatusConflict, "rimborso non consentito nello stato corrente")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "errore rimborso")
+		return
+	}
+
+	outcome := "full"
+	if req.Amount > 0 && req.Amount < pay.Importo {
+		outcome = "partial"
+	}
+	s.recordSecurityEvent(model.SecurityEvent{
+		Type:    "PAYMENT_REFUNDED",
+		Outcome: outcome,
+		UserID:  claims.UserID,
+		Metadata: map[string]any{
+			"payment_token": token,
+			"pratica_id":    pay.PraticaID,
+			"provider":      pay.Provider,
+			"reason":        strings.TrimSpace(req.Reason),
+			"amount":        req.Amount,
+		},
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "refunded", "payment": pay})
 }
 
 func (s *Server) handleBOInviaVisto(w http.ResponseWriter, r *http.Request) {

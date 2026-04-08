@@ -330,6 +330,22 @@ func (s *MemoryStore) ConfirmPaymentByToken(token string) (model.Pagamento, erro
 	return model.Pagamento{}, ErrNotFound
 }
 
+func (s *MemoryStore) RefundPaymentByToken(token string) (model.Pagamento, error) {
+	s.mu.Lock(); defer s.mu.Unlock()
+	for id, p := range s.payments {
+		if p.Token != token {
+			continue
+		}
+		if p.Stato != model.PagamentoCompletato {
+			return model.Pagamento{}, ErrInvalidState
+		}
+		p.Stato = model.PagamentoRimborsato
+		s.payments[id] = p
+		return p, nil
+	}
+	return model.Pagamento{}, ErrNotFound
+}
+
 func (s *MemoryStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

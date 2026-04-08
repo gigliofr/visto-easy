@@ -26,6 +26,7 @@ type DataStore interface {
 	UpdatePaymentCheckout(paymentID, providerSessionID, linkPagamento string) (model.Pagamento, error)
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)
+	RefundPaymentByToken(token string) (model.Pagamento, error)
 	CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error)
 	GetRefreshSessionByID(id string) (model.RefreshSession, error)
 	RevokeRefreshSession(id, replacedBy string) (bool, error)

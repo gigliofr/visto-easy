@@ -647,6 +647,29 @@ func (s *MongoStore) ConfirmPaymentByToken(token string) (model.Pagamento, error
 	return s.GetPaymentByToken(token)
 }
 
+func (s *MongoStore) RefundPaymentByToken(token string) (model.Pagamento, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	token = strings.TrimSpace(token)
+	res, err := s.pagamenti.UpdateOne(
+		ctx,
+		bson.M{"token": token, "stato": model.PagamentoCompletato},
+		bson.M{"$set": bson.M{"stato": model.PagamentoRimborsato}},
+	)
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	if res.ModifiedCount > 0 {
+		return s.GetPaymentByToken(token)
+	}
+
+	_, err = s.GetPaymentByToken(token)
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	return model.Pagamento{}, ErrInvalidState
+}
+
 func (s *MongoStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
 	ctx, cancel := s.ctx()
 	defer cancel()

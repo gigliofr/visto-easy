@@ -242,6 +242,20 @@ func (f *fakePolicyStore) ConfirmPaymentByToken(token string) (model.Pagamento, 
 	}
 	return model.Pagamento{}, store.ErrNotFound
 }
+func (f *fakePolicyStore) RefundPaymentByToken(token string) (model.Pagamento, error) {
+	for id, p := range f.payments {
+		if p.Token != token {
+			continue
+		}
+		if p.Stato != model.PagamentoCompletato {
+			return model.Pagamento{}, store.ErrInvalidState
+		}
+		p.Stato = model.PagamentoRimborsato
+		f.payments[id] = p
+		return p, nil
+	}
+	return model.Pagamento{}, store.ErrNotFound
+}
 func (f *fakePolicyStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
 	if f.refreshSessions == nil {
 		f.refreshSessions = map[string]model.RefreshSession{}
