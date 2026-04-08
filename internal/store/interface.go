@@ -28,6 +28,9 @@ type DataStore interface {
 	CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error)
 	GetRefreshSessionByID(id string) (model.RefreshSession, error)
 	RevokeRefreshSession(id, replacedBy string) (bool, error)
+	CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error)
+	ConsumePasswordResetToken(token string) (model.PasswordResetToken, error)
+	UpdateUserPassword(userID, passwordHash string) (bool, error)
 	MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error)
 	AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error)
 	ListSecurityEvents() []model.SecurityEvent

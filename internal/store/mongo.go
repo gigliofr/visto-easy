@@ -22,6 +22,7 @@ type MongoStore struct {
 	pratiche   *mongo.Collection
 	pagamenti  *mongo.Collection
 	refreshSessions *mongo.Collection
+	passwordResetTokens *mongo.Collection
 	webhooks   *mongo.Collection
 	blockedIPs *mongo.Collection
 	allowedIPs *mongo.Collection
@@ -49,6 +50,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		pratiche:  db.Collection("pratiche"),
 		pagamenti: db.Collection("pagamenti"),
 		refreshSessions: db.Collection("refresh_sessions"),
+		passwordResetTokens: db.Collection("password_reset_tokens"),
 		webhooks:  db.Collection("webhook_events"),
 		blockedIPs: db.Collection("blocked_ips"),
 		allowedIPs: db.Collection("allowed_ips"),
@@ -100,6 +102,15 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("refresh_sessions index creation failed: %w", err)
+	}
+	_, err = s.passwordResetTokens.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "token", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "userid", Value: 1}}},
+		{Keys: bson.D{{Key: "expiresat", Value: 1}}},
+		{Keys: bson.D{{Key: "usedat", Value: 1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("password_reset_tokens index creation failed: %w", err)
 	}
 	_, err = s.webhooks.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "provider", Value: 1}, {Key: "eventid", Value: 1}}, Options: options.Index().SetUnique(true)},
@@ -652,6 +663,75 @@ func (s *MongoStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
 		return false, err
 	}
 	return res.ModifiedCount > 0, nil
+}
+
+func (s *MongoStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	tok := strings.TrimSpace(token.Token)
+	if tok == "" || strings.TrimSpace(token.UserID) == "" {
+		return model.PasswordResetToken{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	token.Token = tok
+	if token.CreatoIl.IsZero() {
+		token.CreatoIl = now
+	}
+	token.AggiornatoIl = now
+	_, err := s.passwordResetTokens.UpdateOne(ctx, bson.M{"token": tok}, bson.M{"$set": token}, options.Update().SetUpsert(true))
+	if err != nil {
+		return model.PasswordResetToken{}, err
+	}
+	return token, nil
+}
+
+func (s *MongoStore) ConsumePasswordResetToken(token string) (model.PasswordResetToken, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	token = strings.TrimSpace(token)
+	now := time.Now().UTC()
+	var rec model.PasswordResetToken
+	err := s.passwordResetTokens.FindOne(ctx, bson.M{"token": token}).Decode(&rec)
+	if errorsIsNotFound(err) {
+		return model.PasswordResetToken{}, ErrNotFound
+	}
+	if err != nil {
+		return model.PasswordResetToken{}, err
+	}
+	if rec.UsedAt != nil || now.After(rec.ExpiresAt) {
+		_, _ = s.passwordResetTokens.DeleteOne(ctx, bson.M{"token": token})
+		return model.PasswordResetToken{}, ErrNotFound
+	}
+	res, err := s.passwordResetTokens.UpdateOne(
+		ctx,
+		bson.M{"token": token, "expiresat": bson.M{"$gt": now}, "$or": []bson.M{{"usedat": nil}, {"usedat": bson.M{"$exists": false}}}},
+		bson.M{"$set": bson.M{"usedat": now, "aggiornatoil": now}},
+	)
+	if err != nil {
+		return model.PasswordResetToken{}, err
+	}
+	if res.ModifiedCount == 0 {
+		return model.PasswordResetToken{}, ErrNotFound
+	}
+	rec.UsedAt = &now
+	rec.AggiornatoIl = now
+	return rec, nil
+}
+
+func (s *MongoStore) UpdateUserPassword(userID, passwordHash string) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	userID = strings.TrimSpace(userID)
+	passwordHash = strings.TrimSpace(passwordHash)
+	if userID == "" || passwordHash == "" {
+		return false, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	res, err := s.users.UpdateOne(ctx, bson.M{"id": userID}, bson.M{"$set": bson.M{"passwordhash": passwordHash, "aggiornatoil": now}})
+	if err != nil {
+		return false, err
+	}
+	return res.MatchedCount > 0, nil
 }
 
 func (s *MongoStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {

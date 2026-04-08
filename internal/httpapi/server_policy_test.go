@@ -18,11 +18,12 @@ type fakePolicyStore struct {
 	usersByEmail   map[string]string
 	pratiche       map[string]model.Pratica
 	refreshSessions map[string]model.RefreshSession
+	passwordResetTokens map[string]model.PasswordResetToken
 	seq            int
 }
 
 func newPolicyTestServer() *Server {
-	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}, refreshSessions: map[string]model.RefreshSession{}}}
+	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}, refreshSessions: map[string]model.RefreshSession{}, passwordResetTokens: map[string]model.PasswordResetToken{}}}
 }
 
 func (f *fakePolicyStore) nextID(prefix string) string {
@@ -233,6 +234,49 @@ func (f *fakePolicyStore) RevokeRefreshSession(id, replacedBy string) (bool, err
 	session.ReplacedBy = strings.TrimSpace(replacedBy)
 	session.AggiornatoIl = now
 	f.refreshSessions[strings.TrimSpace(id)] = session
+	return true, nil
+}
+func (f *fakePolicyStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {
+	if f.passwordResetTokens == nil {
+		f.passwordResetTokens = map[string]model.PasswordResetToken{}
+	}
+	if strings.TrimSpace(token.Token) == "" || strings.TrimSpace(token.UserID) == "" {
+		return model.PasswordResetToken{}, store.ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	if token.CreatoIl.IsZero() {
+		token.CreatoIl = now
+	}
+	token.AggiornatoIl = now
+	f.passwordResetTokens[token.Token] = token
+	return token, nil
+}
+func (f *fakePolicyStore) ConsumePasswordResetToken(token string) (model.PasswordResetToken, error) {
+	rec, ok := f.passwordResetTokens[strings.TrimSpace(token)]
+	if !ok {
+		return model.PasswordResetToken{}, store.ErrNotFound
+	}
+	now := time.Now().UTC()
+	if rec.UsedAt != nil || now.After(rec.ExpiresAt) {
+		delete(f.passwordResetTokens, strings.TrimSpace(token))
+		return model.PasswordResetToken{}, store.ErrNotFound
+	}
+	rec.UsedAt = &now
+	rec.AggiornatoIl = now
+	f.passwordResetTokens[strings.TrimSpace(token)] = rec
+	return rec, nil
+}
+func (f *fakePolicyStore) UpdateUserPassword(userID, passwordHash string) (bool, error) {
+	u, ok := f.users[strings.TrimSpace(userID)]
+	if !ok {
+		return false, nil
+	}
+	if strings.TrimSpace(passwordHash) == "" {
+		return false, store.ErrForbiddenState
+	}
+	u.PasswordHash = strings.TrimSpace(passwordHash)
+	u.AggiornatoIl = time.Now().UTC()
+	f.users[u.ID] = u
 	return true, nil
 }
 func (f *fakePolicyStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {

@@ -28,6 +28,7 @@ type MemoryStore struct {
 	payments  map[string]model.Pagamento
 	webhooks  map[string]time.Time
 	refreshSessions map[string]model.RefreshSession
+	passwordResetTokens map[string]model.PasswordResetToken
 	blockedIPs map[string]model.BlockedIP
 	allowedIPs map[string]model.AllowedIP
 	securityEvents []model.SecurityEvent
@@ -42,6 +43,7 @@ func NewMemoryStore() *MemoryStore {
 		payments: make(map[string]model.Pagamento),
 		webhooks: make(map[string]time.Time),
 		refreshSessions: make(map[string]model.RefreshSession),
+		passwordResetTokens: make(map[string]model.PasswordResetToken),
 		blockedIPs: make(map[string]model.BlockedIP),
 		allowedIPs: make(map[string]model.AllowedIP),
 		securityEvents: make([]model.SecurityEvent, 0, 128),
@@ -358,6 +360,60 @@ func (s *MemoryStore) RevokeRefreshSession(id, replacedBy string) (bool, error) 
 	session.ReplacedBy = strings.TrimSpace(replacedBy)
 	session.AggiornatoIl = now
 	s.refreshSessions[id] = session
+	return true, nil
+}
+
+func (s *MemoryStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tok := strings.TrimSpace(token.Token)
+	if tok == "" || strings.TrimSpace(token.UserID) == "" {
+		return model.PasswordResetToken{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	token.Token = tok
+	if token.CreatoIl.IsZero() {
+		token.CreatoIl = now
+	}
+	token.AggiornatoIl = now
+	s.passwordResetTokens[tok] = token
+	return token, nil
+}
+
+func (s *MemoryStore) ConsumePasswordResetToken(token string) (model.PasswordResetToken, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token = strings.TrimSpace(token)
+	rec, ok := s.passwordResetTokens[token]
+	if !ok {
+		return model.PasswordResetToken{}, ErrNotFound
+	}
+	now := time.Now().UTC()
+	if rec.UsedAt != nil || now.After(rec.ExpiresAt) {
+		delete(s.passwordResetTokens, token)
+		return model.PasswordResetToken{}, ErrNotFound
+	}
+	rec.UsedAt = &now
+	rec.AggiornatoIl = now
+	s.passwordResetTokens[token] = rec
+	return rec, nil
+}
+
+func (s *MemoryStore) UpdateUserPassword(userID, passwordHash string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userID = strings.TrimSpace(userID)
+	passwordHash = strings.TrimSpace(passwordHash)
+	if userID == "" || passwordHash == "" {
+		return false, ErrForbiddenState
+	}
+	u, ok := s.users[userID]
+	if !ok {
+		return false, nil
+	}
+	u.PasswordHash = passwordHash
+	u.AggiornatoIl = time.Now().UTC()
+	s.users[userID] = u
 	return true, nil
 }
 

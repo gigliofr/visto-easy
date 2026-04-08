@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/rand"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/csv"
@@ -299,6 +300,34 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct { Email string `json:"email"` }
 	if !decodeJSON(w, r, &req) { return }
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email != "" {
+		u, err := s.store.GetUserByEmail(email)
+		if err == nil {
+			buf := make([]byte, 24)
+			if _, e := rand.Read(buf); e == nil {
+				token := hex.EncodeToString(buf)
+				expiresAt := time.Now().UTC().Add(30 * time.Minute)
+				_, _ = s.store.CreatePasswordResetToken(model.PasswordResetToken{
+					Token:     token,
+					UserID:    u.ID,
+					Email:     email,
+					ExpiresAt: expiresAt,
+				})
+				s.recordSecurityEvent(model.SecurityEvent{
+					Type:    "PASSWORD_RESET_REQUESTED",
+					Outcome: "accepted",
+					Email:   email,
+					UserID:  u.ID,
+					IP:      clientIP(r),
+					Metadata: map[string]any{
+						"expires_at":  expiresAt.Format(time.RFC3339),
+						"reset_token": token,
+					},
+				})
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "message": "se l'email esiste riceverai istruzioni"})
 }
 
@@ -312,6 +341,33 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "password troppo corta")
 		return
 	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		writeErr(w, http.StatusBadRequest, "token non valido")
+		return
+	}
+	resetRec, err := s.store.ConsumePasswordResetToken(token)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		return
+	}
+	pwd, err := bcrypt.GenerateFromPassword([]byte(strings.TrimSpace(req.NewPassword)), 12)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	ok, err := s.store.UpdateUserPassword(resetRec.UserID, string(pwd))
+	if err != nil || !ok {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{
+		Type:    "PASSWORD_RESET_COMPLETED",
+		Outcome: "ok",
+		Email:   resetRec.Email,
+		UserID:  resetRec.UserID,
+		IP:      clientIP(r),
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
 }
 

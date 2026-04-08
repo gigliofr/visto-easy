@@ -135,6 +135,16 @@ type RefreshSession struct {
 	AggiornatoIl time.Time `json:"aggiornato_il"`
 }
 
+type PasswordResetToken struct {
+	Token       string     `json:"token"`
+	UserID      string     `json:"user_id"`
+	Email       string     `json:"email"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	UsedAt      *time.Time `json:"used_at,omitempty"`
+	CreatoIl    time.Time  `json:"creato_il"`
+	AggiornatoIl time.Time `json:"aggiornato_il"`
+}
+
 type SecurityEvent struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`
