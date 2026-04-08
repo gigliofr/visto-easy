@@ -66,6 +66,8 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(securityHeadersMiddleware)
+	r.Use(corsMiddleware)
 	r.Use(requestJSON)
 
 	r.Get("/", s.handleRoot)
