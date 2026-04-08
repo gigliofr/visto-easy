@@ -1,10 +1,16 @@
 package httpapi
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
@@ -29,6 +35,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/", s.handleRoot)
 	r.Get("/api/v1/health", s.handleHealth)
+	r.Post("/api/pagamento/webhook", s.handlePagamentoWebhook)
 
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Post("/register", s.handleRegister)
@@ -56,7 +63,6 @@ func (s *Server) Router() http.Handler {
 			r.Get("/{token}", s.handleGetPagamento)
 			r.Get("/{token}/stato", s.handleGetPagamento)
 			r.Post("/crea-sessione", s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin)(http.HandlerFunc(s.handleCreatePagamentoSessione)).ServeHTTP)
-			r.Post("/webhook", s.handlePagamentoWebhook)
 		})
 
 		r.Route("/api/bo", func(r chi.Router) {
@@ -292,8 +298,25 @@ func (s *Server) handleGetPagamento(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "payload non valido")
+		return
+	}
+	secret := strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	if secret != "" {
+		sig := strings.TrimSpace(r.Header.Get("Stripe-Signature"))
+		if !verifyStripeSignature(secret, body, sig) {
+			writeErr(w, http.StatusUnauthorized, "firma webhook non valida")
+			return
+		}
+	}
+
 	var req struct { Token, Event string }
-	if !decodeJSON(w, r, &req) { return }
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "payload non valido")
+		return
+	}
 	if strings.ToLower(req.Event) != "payment.succeeded" {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ignored"})
 		return
@@ -307,7 +330,55 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "processed"})
 }
 
-func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, s.store.ListAllPratiche()) }
+func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
+	all := s.store.ListAllPratiche()
+	filtered := make([]model.Pratica, 0, len(all))
+
+	stato := strings.TrimSpace(r.URL.Query().Get("stato"))
+	tipoVisto := strings.TrimSpace(r.URL.Query().Get("tipo_visto"))
+	paeseDest := strings.TrimSpace(r.URL.Query().Get("paese_dest"))
+	priorita := strings.TrimSpace(r.URL.Query().Get("priorita"))
+	operatoreID := strings.TrimSpace(r.URL.Query().Get("operatore_id"))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	fromTs := parseOptionalTime(r.URL.Query().Get("from"))
+	toTs := parseOptionalTime(r.URL.Query().Get("to"))
+
+	for _, p := range all {
+		if stato != "" && string(p.Stato) != stato {
+			continue
+		}
+		if tipoVisto != "" && !strings.EqualFold(p.TipoVisto, tipoVisto) {
+			continue
+		}
+		if paeseDest != "" && !strings.EqualFold(p.PaeseDest, paeseDest) {
+			continue
+		}
+		if priorita != "" && string(p.Priorita) != priorita {
+			continue
+		}
+		if operatoreID != "" && p.OperatoreID != operatoreID {
+			continue
+		}
+		if !fromTs.IsZero() && p.CreatoIl.Before(fromTs) {
+			continue
+		}
+		if !toTs.IsZero() && p.CreatoIl.After(toTs) {
+			continue
+		}
+		if q != "" {
+			haystack := strings.ToLower(strings.Join([]string{p.Codice, p.TipoVisto, p.PaeseDest, p.UtenteID}, "|"))
+			if !strings.Contains(haystack, q) {
+				continue
+			}
+		}
+		filtered = append(filtered, p)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": filtered,
+		"count": len(filtered),
+	})
+}
 
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
@@ -435,4 +506,65 @@ func requestJSON(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func parseOptionalTime(raw string) time.Time {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t
+	}
+	if unix, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return time.Unix(unix, 0).UTC()
+	}
+	return time.Time{}
+}
+
+func verifyStripeSignature(secret string, payload []byte, signatureHeader string) bool {
+	if strings.TrimSpace(signatureHeader) == "" {
+		return false
+	}
+	parts := strings.Split(signatureHeader, ",")
+	v1 := ""
+	for _, part := range parts {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		if kv[0] == "v1" {
+			v1 = kv[1]
+			break
+		}
+	}
+	if v1 == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(payload)
+	expected := mac.Sum(nil)
+	provided, err := hexDecode(v1)
+	if err != nil {
+		return false
+	}
+	return hmac.Equal(expected, provided)
+}
+
+func hexDecode(v string) ([]byte, error) {
+	const hexdigits = "0123456789abcdef"
+	v = strings.ToLower(strings.TrimSpace(v))
+	if len(v)%2 != 0 {
+		return nil, errors.New("invalid hex")
+	}
+	out := make([]byte, len(v)/2)
+	for i := 0; i < len(v); i += 2 {
+		hi := strings.IndexByte(hexdigits, v[i])
+		lo := strings.IndexByte(hexdigits, v[i+1])
+		if hi < 0 || lo < 0 {
+			return nil, errors.New("invalid hex")
+		}
+		out[i/2] = byte((hi << 4) | lo)
+	}
+	return out, nil
 }

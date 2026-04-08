@@ -57,10 +57,14 @@ LOG_LEVEL=info
 JWT_SECRET=change_me_with_32_plus_chars_minimum
 SESSION_SECRET=change_me_with_32_plus_chars_minimum
 
-DATABASE_PROVIDER=postgres
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGODB_DB_NAME=visto-easy
+
+# Alias opzionali
 DATABASE_NAME=visto-easy
-DATABASE_URL=postgres://user:password@host:5432/visto-easy?sslmode=require
-DATABASE_DSN=
+DATABASE_URL=
+MONGO_URL=
+MONGODB_URL=
 
 REDIS_URL=
 S3_ENDPOINT=
