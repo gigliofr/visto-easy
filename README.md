@@ -36,6 +36,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `POST /api/bo/security/allowed-ips/revoke`
 - `POST /api/bo/security/allowed-ips/revoke-bulk`
 - `GET /api/bo/security/blocked-ips`
+- `GET /api/bo/security/evaluate-ip`
 - `POST /api/bo/security/blocked-ips/block`
 - `POST /api/bo/security/blocked-ips/unblock`
 - `POST /api/bo/security/blocked-ips/unblock-bulk`
@@ -76,6 +77,10 @@ Payload blocklist IP:
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "203.0.113.0/24", "reason": "abuse subnet", "ttl_minutes": 180 }`
 - `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }` oppure `{ "ip": "203.0.113.0/24" }`
 - `POST /api/bo/security/blocked-ips/unblock-bulk`: `{ "targets": ["1.2.3.4", "203.0.113.0/24"] }` oppure `{ "unblock_all": true }`
+- `GET /api/bo/security/evaluate-ip?ip=203.0.113.7` valuta la policy effettiva e la regola matchata
+
+Precedence policy IP:
+- `block` exact > `allow` exact > CIDR con prefisso piu specifico; in caso di pareggio CIDR vince `block`
 
 ## Run locale
 

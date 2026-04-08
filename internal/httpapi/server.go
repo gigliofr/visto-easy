@@ -104,6 +104,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/security/allowed-ips/revoke", s.handleBORevokeAllowedIP)
 			r.Post("/security/allowed-ips/revoke-bulk", s.handleBORevokeAllowedIPBulk)
 			r.Get("/security/blocked-ips", s.handleBOListBlockedIPs)
+			r.Get("/security/evaluate-ip", s.handleBOEvaluateIP)
 			r.Post("/security/blocked-ips/block", s.handleBOBlockIP)
 			r.Post("/security/blocked-ips/unblock", s.handleBOUnblockIP)
 			r.Post("/security/blocked-ips/unblock-bulk", s.handleBOUnblockIPBulk)
@@ -765,6 +766,24 @@ func (s *Server) handleBOListBlockedIPs(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
 		"count": len(items),
+	})
+}
+
+func (s *Server) handleBOEvaluateIP(w http.ResponseWriter, r *http.Request) {
+	input := strings.TrimSpace(r.URL.Query().Get("ip"))
+	if input == "" {
+		input = clientIP(r)
+	}
+	ip, err := normalizeIPAddress(input)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "ip non valido")
+		return
+	}
+
+	decision := s.evaluateClientIPPolicy(ip)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ip":       ip,
+		"decision": decision,
 	})
 }
 
@@ -1484,7 +1503,8 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 			if key == "" {
 				key = "unknown"
 			}
-			if allowed, entry := s.isClientAllowedIP(key); allowed {
+			decision := s.evaluateClientIPPolicy(key)
+			if decision.Action == "allow" && decision.AllowedBy != nil {
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:      "IP_ALLOWLIST_MATCH",
 					Outcome:   "allowed",
@@ -1492,16 +1512,17 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 					UserAgent: strings.TrimSpace(r.UserAgent()),
 					Metadata: map[string]any{
 						"path":       r.URL.Path,
-						"reason":     entry.Reason,
-						"allowed_by": entry.AllowedBy,
-						"allow_rule": entry.IP,
-						"expires_at": formatOptTime(entry.ExpiresAt),
+						"reason":     decision.AllowedBy.Reason,
+						"allowed_by": decision.AllowedBy.AllowedBy,
+						"allow_rule": decision.AllowedBy.IP,
+						"expires_at": formatOptTime(decision.AllowedBy.ExpiresAt),
+						"policy_rule": decision.Reason,
 					},
 				})
 				next.ServeHTTP(w, r)
 				return
 			}
-			if blocked, entry := s.isClientBlockedIP(key); blocked {
+			if decision.Action == "block" && decision.BlockedBy != nil {
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:      "IP_BLOCKED_REQUEST",
 					Outcome:   "blocked",
@@ -1509,10 +1530,11 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 					UserAgent: strings.TrimSpace(r.UserAgent()),
 					Metadata: map[string]any{
 						"path":       r.URL.Path,
-						"reason":     entry.Reason,
-						"blocked_by": entry.BlockedBy,
-						"block_rule": entry.IP,
-						"expires_at": formatOptTime(entry.ExpiresAt),
+						"reason":     decision.BlockedBy.Reason,
+						"blocked_by": decision.BlockedBy.BlockedBy,
+						"block_rule": decision.BlockedBy.IP,
+						"expires_at": formatOptTime(decision.BlockedBy.ExpiresAt),
+						"policy_rule": decision.Reason,
 					},
 				})
 				writeJSON(w, http.StatusForbidden, map[string]any{"error": "ip bloccato"})
@@ -1607,30 +1629,114 @@ func ipMatchesBlockedTarget(clientIP net.IP, target string) bool {
 	return false
 }
 
-func (s *Server) isClientAllowedIP(clientIPRaw string) (bool, model.AllowedIP) {
-	clientIP := net.ParseIP(strings.TrimSpace(clientIPRaw))
-	if clientIP == nil {
-		return false, model.AllowedIP{}
-	}
-	for _, entry := range s.store.ListAllowedIPs() {
-		if ipMatchesBlockedTarget(clientIP, entry.IP) {
-			return true, entry
-		}
-	}
-	return false, model.AllowedIP{}
+type ipPolicyDecision struct {
+	Action    string           `json:"action"`
+	Reason    string           `json:"reason"`
+	BlockedBy *model.BlockedIP `json:"blocked_by,omitempty"`
+	AllowedBy *model.AllowedIP `json:"allowed_by,omitempty"`
 }
 
-func (s *Server) isClientBlockedIP(clientIPRaw string) (bool, model.BlockedIP) {
+func (s *Server) evaluateClientIPPolicy(clientIPRaw string) ipPolicyDecision {
 	clientIP := net.ParseIP(strings.TrimSpace(clientIPRaw))
 	if clientIP == nil {
-		return false, model.BlockedIP{}
+		return ipPolicyDecision{Action: "allow", Reason: "invalid_ip_fallback"}
 	}
-	for _, entry := range s.store.ListBlockedIPs() {
-		if ipMatchesBlockedTarget(clientIP, entry.IP) {
-			return true, entry
+
+	blockedMatch, hasBlocked := bestBlockedMatch(clientIP, s.store.ListBlockedIPs())
+	allowedMatch, hasAllowed := bestAllowedMatch(clientIP, s.store.ListAllowedIPs())
+
+	if hasBlocked && isExactRule(blockedMatch.IP) {
+		return ipPolicyDecision{Action: "block", Reason: "exact_block_rule", BlockedBy: &blockedMatch, AllowedBy: optAllowedPtr(hasAllowed, allowedMatch)}
+	}
+	if hasAllowed && isExactRule(allowedMatch.IP) {
+		return ipPolicyDecision{Action: "allow", Reason: "exact_allow_rule", AllowedBy: &allowedMatch, BlockedBy: optBlockedPtr(hasBlocked, blockedMatch)}
+	}
+	if hasBlocked && hasAllowed {
+		blockSpec := ruleSpecificity(blockedMatch.IP)
+		allowSpec := ruleSpecificity(allowedMatch.IP)
+		if blockSpec >= allowSpec {
+			return ipPolicyDecision{Action: "block", Reason: "cidr_block_precedence", BlockedBy: &blockedMatch, AllowedBy: &allowedMatch}
+		}
+		return ipPolicyDecision{Action: "allow", Reason: "cidr_allow_precedence", AllowedBy: &allowedMatch, BlockedBy: &blockedMatch}
+	}
+	if hasBlocked {
+		return ipPolicyDecision{Action: "block", Reason: "block_rule", BlockedBy: &blockedMatch}
+	}
+	if hasAllowed {
+		return ipPolicyDecision{Action: "allow", Reason: "allow_rule", AllowedBy: &allowedMatch}
+	}
+	return ipPolicyDecision{Action: "allow", Reason: "no_matching_rule"}
+}
+
+func bestBlockedMatch(clientIP net.IP, rules []model.BlockedIP) (model.BlockedIP, bool) {
+	found := false
+	best := model.BlockedIP{}
+	bestSpec := -1
+	for _, rule := range rules {
+		if !ipMatchesBlockedTarget(clientIP, rule.IP) {
+			continue
+		}
+		spec := ruleSpecificity(rule.IP)
+		if !found || spec > bestSpec || (spec == bestSpec && rule.BlockedAt.After(best.BlockedAt)) {
+			best = rule
+			bestSpec = spec
+			found = true
 		}
 	}
-	return false, model.BlockedIP{}
+	return best, found
+}
+
+func bestAllowedMatch(clientIP net.IP, rules []model.AllowedIP) (model.AllowedIP, bool) {
+	found := false
+	best := model.AllowedIP{}
+	bestSpec := -1
+	for _, rule := range rules {
+		if !ipMatchesBlockedTarget(clientIP, rule.IP) {
+			continue
+		}
+		spec := ruleSpecificity(rule.IP)
+		if !found || spec > bestSpec || (spec == bestSpec && rule.AllowedAt.After(best.AllowedAt)) {
+			best = rule
+			bestSpec = spec
+			found = true
+		}
+	}
+	return best, found
+}
+
+func ruleSpecificity(target string) int {
+	target = strings.TrimSpace(target)
+	if ip := net.ParseIP(target); ip != nil {
+		if ip.To4() != nil {
+			return 32
+		}
+		return 128
+	}
+	if _, network, err := net.ParseCIDR(target); err == nil {
+		ones, _ := network.Mask.Size()
+		return ones
+	}
+	return -1
+}
+
+func isExactRule(target string) bool {
+	return net.ParseIP(strings.TrimSpace(target)) != nil
+}
+
+func optAllowedPtr(ok bool, value model.AllowedIP) *model.AllowedIP {
+	if !ok {
+		return nil
+	}
+	v := value
+	return &v
+}
+
+func optBlockedPtr(ok bool, value model.BlockedIP) *model.BlockedIP {
+	if !ok {
+		return nil
+	}
+	v := value
+	return &v
 }
 
 func (s *Server) recordSecurityEvent(evt model.SecurityEvent) {
