@@ -27,6 +27,7 @@ type MemoryStore struct {
 	pratiche  map[string]model.Pratica
 	payments  map[string]model.Pagamento
 	webhooks  map[string]time.Time
+	blockedIPs map[string]model.BlockedIP
 	securityEvents []model.SecurityEvent
 	byEmail   map[string]string
 	counters  map[string]*atomic.Uint64
@@ -38,6 +39,7 @@ func NewMemoryStore() *MemoryStore {
 		pratiche: make(map[string]model.Pratica),
 		payments: make(map[string]model.Pagamento),
 		webhooks: make(map[string]time.Time),
+		blockedIPs: make(map[string]model.BlockedIP),
 		securityEvents: make([]model.SecurityEvent, 0, 128),
 		byEmail:  make(map[string]string),
 		counters: map[string]*atomic.Uint64{"pratica": {}},
@@ -319,4 +321,65 @@ func (s *MemoryStore) GetSecurityEventByID(id string) (model.SecurityEvent, erro
 		}
 	}
 	return model.SecurityEvent{}, ErrNotFound
+}
+
+func (s *MemoryStore) UpsertBlockedIP(entry model.BlockedIP) (model.BlockedIP, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip := strings.TrimSpace(entry.IP)
+	if ip == "" {
+		return model.BlockedIP{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	entry.IP = ip
+	if entry.BlockedAt.IsZero() {
+		entry.BlockedAt = now
+	}
+	s.blockedIPs[ip] = entry
+	return entry, nil
+}
+
+func (s *MemoryStore) RemoveBlockedIP(ip string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return false, ErrForbiddenState
+	}
+	if _, ok := s.blockedIPs[ip]; !ok {
+		return false, nil
+	}
+	delete(s.blockedIPs, ip)
+	return true, nil
+}
+
+func (s *MemoryStore) ListBlockedIPs() []model.BlockedIP {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	out := make([]model.BlockedIP, 0, len(s.blockedIPs))
+	for ip, entry := range s.blockedIPs {
+		if entry.ExpiresAt != nil && now.After(*entry.ExpiresAt) {
+			delete(s.blockedIPs, ip)
+			continue
+		}
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].BlockedAt.After(out[j].BlockedAt) })
+	return out
+}
+
+func (s *MemoryStore) GetBlockedIP(ip string) (model.BlockedIP, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip = strings.TrimSpace(ip)
+	entry, ok := s.blockedIPs[ip]
+	if !ok {
+		return model.BlockedIP{}, ErrNotFound
+	}
+	if entry.ExpiresAt != nil && time.Now().UTC().After(*entry.ExpiresAt) {
+		delete(s.blockedIPs, ip)
+		return model.BlockedIP{}, ErrNotFound
+	}
+	return entry, nil
 }

@@ -134,3 +134,11 @@ type SecurityEvent struct {
 	Metadata  map[string]any `json:"metadata,omitempty"`
 	CreatoIl  time.Time      `json:"creato_il"`
 }
+
+type BlockedIP struct {
+	IP        string     `json:"ip"`
+	Reason    string     `json:"reason"`
+	BlockedBy string     `json:"blocked_by"`
+	BlockedAt time.Time  `json:"blocked_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}

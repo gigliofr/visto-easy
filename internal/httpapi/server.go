@@ -33,7 +33,6 @@ type Server struct {
 	presign storagepkg.PresignService
 	authRL  *simpleRateLimiter
 	loginLT *loginLockTracker
-	ipBlocklist *ipBlocklist
 }
 
 func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.PresignService) *Server {
@@ -56,7 +55,6 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 		presign: presign,
 		authRL:  newSimpleRateLimiter(limitPerMinute, time.Minute),
 		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
-		ipBlocklist: newIPBlocklist(),
 	}
 }
 
@@ -758,7 +756,7 @@ func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleBOListBlockedIPs(w http.ResponseWriter, _ *http.Request) {
-	items := s.ipBlocklist.List()
+	items := s.store.ListBlockedIPs()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
 		"count": len(items),
@@ -788,7 +786,22 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	if ttlMinutes <= 0 {
 		ttlMinutes = envInt("SECURITY_BLOCK_IP_DEFAULT_TTL_MINUTES", 120)
 	}
-	entry := s.ipBlocklist.Block(ip, reason, claims.UserID, time.Duration(ttlMinutes)*time.Minute)
+	now := time.Now().UTC()
+	entry := model.BlockedIP{
+		IP:        ip,
+		Reason:    reason,
+		BlockedBy: claims.UserID,
+		BlockedAt: now,
+	}
+	if ttlMinutes > 0 {
+		exp := now.Add(time.Duration(ttlMinutes) * time.Minute)
+		entry.ExpiresAt = &exp
+	}
+	entry, err = s.store.UpsertBlockedIP(entry)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore salvataggio denylist")
+		return
+	}
 	s.recordSecurityEvent(model.SecurityEvent{
 		Type:    "IP_BLOCKED",
 		Outcome: "manual",
@@ -815,7 +828,11 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "ip non valido")
 		return
 	}
-	removed := s.ipBlocklist.Unblock(ip)
+	removed, err := s.store.RemoveBlockedIP(ip)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore aggiornamento denylist")
+		return
+	}
 	if !removed {
 		writeErr(w, http.StatusNotFound, "ip non presente in denylist")
 		return
@@ -1255,7 +1272,7 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 			if key == "" {
 				key = "unknown"
 			}
-			if blocked, entry := s.ipBlocklist.IsBlocked(key); blocked {
+			if entry, err := s.store.GetBlockedIP(key); err == nil {
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:      "IP_BLOCKED_REQUEST",
 					Outcome:   "blocked",
@@ -1500,83 +1517,6 @@ func formatOptTime(t *time.Time) string {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
-}
-
-type ipBlocklistEntry struct {
-	IP        string     `json:"ip"`
-	Reason    string     `json:"reason"`
-	BlockedBy string     `json:"blocked_by"`
-	BlockedAt time.Time  `json:"blocked_at"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-}
-
-type ipBlocklist struct {
-	mu      sync.Mutex
-	entries map[string]ipBlocklistEntry
-}
-
-func newIPBlocklist() *ipBlocklist {
-	return &ipBlocklist{entries: map[string]ipBlocklistEntry{}}
-}
-
-func (b *ipBlocklist) Block(ip, reason, blockedBy string, ttl time.Duration) ipBlocklistEntry {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := time.Now().UTC()
-	var exp *time.Time
-	if ttl > 0 {
-		t := now.Add(ttl)
-		exp = &t
-	}
-	entry := ipBlocklistEntry{
-		IP:        ip,
-		Reason:    reason,
-		BlockedBy: blockedBy,
-		BlockedAt: now,
-		ExpiresAt: exp,
-	}
-	b.entries[ip] = entry
-	return entry
-}
-
-func (b *ipBlocklist) Unblock(ip string) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if _, ok := b.entries[ip]; !ok {
-		return false
-	}
-	delete(b.entries, ip)
-	return true
-}
-
-func (b *ipBlocklist) IsBlocked(ip string) (bool, ipBlocklistEntry) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	entry, ok := b.entries[ip]
-	if !ok {
-		return false, ipBlocklistEntry{}
-	}
-	if entry.ExpiresAt != nil && time.Now().UTC().After(*entry.ExpiresAt) {
-		delete(b.entries, ip)
-		return false, ipBlocklistEntry{}
-	}
-	return true, entry
-}
-
-func (b *ipBlocklist) List() []ipBlocklistEntry {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	now := time.Now().UTC()
-	out := make([]ipBlocklistEntry, 0, len(b.entries))
-	for ip, entry := range b.entries {
-		if entry.ExpiresAt != nil && now.After(*entry.ExpiresAt) {
-			delete(b.entries, ip)
-			continue
-		}
-		out = append(out, entry)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].BlockedAt.After(out[j].BlockedAt) })
-	return out
 }
 
 type simpleRateLimiter struct {

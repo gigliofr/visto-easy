@@ -12,6 +12,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Pagamenti: creazione sessione, query stato, webhook `payment.succeeded`
 - Webhook pagamenti idempotente con deduplicazione `event_id`/`id`
 - Audit sicurezza login/rate-limit con endpoint backoffice
+- Denylist IP backoffice con persistenza datastore (riavvio-safe)
 - Macchina stati pratica con validazione transizioni
 
 ## API principali

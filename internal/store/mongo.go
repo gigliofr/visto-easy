@@ -22,6 +22,7 @@ type MongoStore struct {
 	pratiche   *mongo.Collection
 	pagamenti  *mongo.Collection
 	webhooks   *mongo.Collection
+	blockedIPs *mongo.Collection
 	securityEvents *mongo.Collection
 	counters   *mongo.Collection
 }
@@ -46,6 +47,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		pratiche:  db.Collection("pratiche"),
 		pagamenti: db.Collection("pagamenti"),
 		webhooks:  db.Collection("webhook_events"),
+		blockedIPs: db.Collection("blocked_ips"),
 		securityEvents: db.Collection("security_events"),
 		counters:  db.Collection("counters"),
 	}
@@ -100,6 +102,14 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("security_events index creation failed: %w", err)
+	}
+	_, err = s.blockedIPs.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "ip", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "expiresat", Value: 1}}},
+		{Keys: bson.D{{Key: "blockedat", Value: -1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("blocked_ips index creation failed: %w", err)
 	}
 	return nil
 }
@@ -605,6 +615,86 @@ func (s *MongoStore) GetSecurityEventByID(id string) (model.SecurityEvent, error
 		return model.SecurityEvent{}, ErrNotFound
 	}
 	return evt, err
+}
+
+func (s *MongoStore) UpsertBlockedIP(entry model.BlockedIP) (model.BlockedIP, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	ip := strings.TrimSpace(entry.IP)
+	if ip == "" {
+		return model.BlockedIP{}, ErrForbiddenState
+	}
+	entry.IP = ip
+	if entry.BlockedAt.IsZero() {
+		entry.BlockedAt = time.Now().UTC()
+	}
+	_, err := s.blockedIPs.UpdateOne(ctx, bson.M{"ip": ip}, bson.M{"$set": entry}, options.Update().SetUpsert(true))
+	if err != nil {
+		return model.BlockedIP{}, err
+	}
+	return entry, nil
+}
+
+func (s *MongoStore) RemoveBlockedIP(ip string) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return false, ErrForbiddenState
+	}
+	res, err := s.blockedIPs.DeleteOne(ctx, bson.M{"ip": ip})
+	if err != nil {
+		return false, err
+	}
+	return res.DeletedCount > 0, nil
+}
+
+func (s *MongoStore) ListBlockedIPs() []model.BlockedIP {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	now := time.Now().UTC()
+	_, _ = s.blockedIPs.DeleteMany(ctx, bson.M{"expiresat": bson.M{"$lte": now}})
+
+	cur, err := s.blockedIPs.Find(ctx, bson.M{"$or": []bson.M{{"expiresat": bson.M{"$exists": false}}, {"expiresat": nil}, {"expiresat": bson.M{"$gt": now}}}}, options.Find().SetSort(bson.M{"blockedat": -1}))
+	if err != nil {
+		return []model.BlockedIP{}
+	}
+	defer cur.Close(ctx)
+
+	out := make([]model.BlockedIP, 0)
+	for cur.Next(ctx) {
+		var entry model.BlockedIP
+		if cur.Decode(&entry) == nil {
+			out = append(out, entry)
+		}
+	}
+	return out
+}
+
+func (s *MongoStore) GetBlockedIP(ip string) (model.BlockedIP, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return model.BlockedIP{}, ErrForbiddenState
+	}
+	var entry model.BlockedIP
+	err := s.blockedIPs.FindOne(ctx, bson.M{"ip": ip}).Decode(&entry)
+	if errorsIsNotFound(err) {
+		return model.BlockedIP{}, ErrNotFound
+	}
+	if err != nil {
+		return model.BlockedIP{}, err
+	}
+	if entry.ExpiresAt != nil && time.Now().UTC().After(*entry.ExpiresAt) {
+		_, _ = s.blockedIPs.DeleteOne(ctx, bson.M{"ip": ip})
+		return model.BlockedIP{}, ErrNotFound
+	}
+	return entry, nil
 }
 
 func errorsIsNotFound(err error) bool {

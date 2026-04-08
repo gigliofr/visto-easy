@@ -27,4 +27,8 @@ type DataStore interface {
 	AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error)
 	ListSecurityEvents() []model.SecurityEvent
 	GetSecurityEventByID(id string) (model.SecurityEvent, error)
+	UpsertBlockedIP(entry model.BlockedIP) (model.BlockedIP, error)
+	RemoveBlockedIP(ip string) (bool, error)
+	ListBlockedIPs() []model.BlockedIP
+	GetBlockedIP(ip string) (model.BlockedIP, error)
 }
