@@ -238,6 +238,29 @@ func (s *MongoStore) GetUserByID(id string) (model.Utente, error) {
 	return u, err
 }
 
+func (s *MongoStore) SetUserTOTPSecret(userID, secret string) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	userID = strings.TrimSpace(userID)
+	res, err := s.users.UpdateOne(ctx, bson.M{"id": userID}, bson.M{"$set": bson.M{"totpsecret": strings.TrimSpace(secret), "aggiornatoil": time.Now().UTC()}})
+	if err != nil {
+		return false, err
+	}
+	return res.MatchedCount > 0, nil
+}
+
+func (s *MongoStore) SetUserTOTPEnabled(userID string, enabled bool) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	userID = strings.TrimSpace(userID)
+	set := bson.M{"totpenabled": enabled, "aggiornatoil": time.Now().UTC()}
+	res, err := s.users.UpdateOne(ctx, bson.M{"id": userID}, bson.M{"$set": set})
+	if err != nil {
+		return false, err
+	}
+	return res.MatchedCount > 0, nil
+}
+
 func (s *MongoStore) nextPraticaSeq(ctx context.Context) (int64, error) {
 	opt := options.FindOneAndUpdate().SetUpsert(true).SetReturnDocument(options.After)
 	update := bson.M{"$inc": bson.M{"seq": 1}}

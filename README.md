@@ -21,6 +21,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
+- `POST /api/auth/2fa/setup`
+- `POST /api/auth/2fa/enable`
+- `POST /api/auth/2fa/disable`
 - `POST /api/pratiche/`
 - `GET /api/pratiche/`
 - `GET /api/pratiche/{id}`
@@ -61,6 +64,12 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `event` oppure `type` (es. `payment.succeeded`)
 - `event_id` oppure `id`
 - `token` diretto oppure `data.object.metadata.token` / `data.object.client_reference_id`
+
+2FA backoffice (TOTP):
+- setup: `POST /api/auth/2fa/setup` (richiede token access backoffice)
+- enable: `POST /api/auth/2fa/enable` payload `{ "code": "123456" }`
+- disable: `POST /api/auth/2fa/disable` payload `{ "code": "123456" }`
+- login backoffice con 2FA attiva: includere `otp` nel payload login
 
 ## Query params utili (backoffice)
 

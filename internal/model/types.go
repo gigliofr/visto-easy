@@ -41,6 +41,8 @@ type Utente struct {
 	ID              string    `json:"id"`
 	Email           string    `json:"email"`
 	PasswordHash    string    `json:"-"`
+	TOTPSecret      string    `json:"-"`
+	TOTPEnabled     bool      `json:"totp_enabled"`
 	Nome            string    `json:"nome"`
 	Cognome         string    `json:"cognome"`
 	Ruolo           Role      `json:"ruolo"`

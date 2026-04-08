@@ -107,6 +107,34 @@ func (s *MemoryStore) GetUserByID(id string) (model.Utente, error) {
 	return u, nil
 }
 
+func (s *MemoryStore) SetUserTOTPSecret(userID, secret string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userID = strings.TrimSpace(userID)
+	u, ok := s.users[userID]
+	if !ok {
+		return false, nil
+	}
+	u.TOTPSecret = strings.TrimSpace(secret)
+	u.AggiornatoIl = time.Now().UTC()
+	s.users[userID] = u
+	return true, nil
+}
+
+func (s *MemoryStore) SetUserTOTPEnabled(userID string, enabled bool) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userID = strings.TrimSpace(userID)
+	u, ok := s.users[userID]
+	if !ok {
+		return false, nil
+	}
+	u.TOTPEnabled = enabled
+	u.AggiornatoIl = time.Now().UTC()
+	s.users[userID] = u
+	return true, nil
+}
+
 func (s *MemoryStore) CreatePratica(p model.Pratica, actorID string) (model.Pratica, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -104,6 +104,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/crea-sessione", s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin)(http.HandlerFunc(s.handleCreatePagamentoSessione)).ServeHTTP)
 		})
 
+		r.Post("/api/auth/2fa/setup", s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin)(http.HandlerFunc(s.handle2FASetup)).ServeHTTP)
+		r.Post("/api/auth/2fa/enable", s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin)(http.HandlerFunc(s.handle2FAEnable)).ServeHTTP)
+		r.Post("/api/auth/2fa/disable", s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin)(http.HandlerFunc(s.handle2FADisable)).ServeHTTP)
+
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
@@ -177,7 +181,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct { Email, Password string }
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		OTP      string `json:"otp"`
+	}
 	if !decodeJSON(w, r, &req) { return }
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	ip := clientIP(r)
@@ -238,6 +246,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		})
 		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
 		return
+	}
+	if isBackofficeRole(u.Ruolo) && u.TOTPEnabled {
+		if !auth.ValidateTOTP(req.OTP, u.TOTPSecret) {
+			s.recordSecurityEvent(model.SecurityEvent{Type: "LOGIN_FAILED", Outcome: "invalid_totp", Email: email, UserID: u.ID, IP: ip, UserAgent: ua})
+			writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+			return
+		}
 	}
 	s.loginLT.Clear(email)
 	s.recordSecurityEvent(model.SecurityEvent{
@@ -400,6 +415,100 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		IP:      clientIP(r),
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
+}
+
+func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	u, err := s.store.GetUserByID(claims.UserID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	secret, uri, err := auth.GenerateTOTPSecret(u.Email, "Visto Easy")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore setup 2fa")
+		return
+	}
+	ok, err := s.store.SetUserTOTPSecret(u.ID, secret)
+	if err != nil || !ok {
+		writeErr(w, http.StatusInternalServerError, "errore setup 2fa")
+		return
+	}
+	_, _ = s.store.SetUserTOTPEnabled(u.ID, false)
+	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_SETUP", Outcome: "pending_enable", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "secret": secret, "provisioning_uri": uri})
+}
+
+func (s *Server) handle2FAEnable(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	u, err := s.store.GetUserByID(claims.UserID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	if strings.TrimSpace(u.TOTPSecret) == "" {
+		writeErr(w, http.StatusBadRequest, "setup 2fa non inizializzato")
+		return
+	}
+	if !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
+		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+		return
+	}
+	ok, err := s.store.SetUserTOTPEnabled(u.ID, true)
+	if err != nil || !ok {
+		writeErr(w, http.StatusInternalServerError, "errore attivazione 2fa")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_ENABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "enabled"})
+}
+
+func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	var req struct {
+		Code string `json:"code"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	u, err := s.store.GetUserByID(claims.UserID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	if u.TOTPEnabled && !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
+		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+		return
+	}
+	if _, err := s.store.SetUserTOTPEnabled(u.ID, false); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore disattivazione 2fa")
+		return
+	}
+	_, _ = s.store.SetUserTOTPSecret(u.ID, "")
+	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_DISABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "disabled"})
+}
+
+func isBackofficeRole(role model.Role) bool {
+	return role == model.RoleOperatore || role == model.RoleSupervisore || role == model.RoleAdmin
 }
 
 func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {

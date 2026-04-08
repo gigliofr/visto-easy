@@ -82,6 +82,26 @@ func (f *fakePolicyStore) GetUserByID(id string) (model.Utente, error) {
 	}
 	return u, nil
 }
+func (f *fakePolicyStore) SetUserTOTPSecret(userID, secret string) (bool, error) {
+	u, ok := f.users[strings.TrimSpace(userID)]
+	if !ok {
+		return false, nil
+	}
+	u.TOTPSecret = strings.TrimSpace(secret)
+	u.AggiornatoIl = time.Now().UTC()
+	f.users[u.ID] = u
+	return true, nil
+}
+func (f *fakePolicyStore) SetUserTOTPEnabled(userID string, enabled bool) (bool, error) {
+	u, ok := f.users[strings.TrimSpace(userID)]
+	if !ok {
+		return false, nil
+	}
+	u.TOTPEnabled = enabled
+	u.AggiornatoIl = time.Now().UTC()
+	f.users[u.ID] = u
+	return true, nil
+}
 func (f *fakePolicyStore) CreatePratica(p model.Pratica, actorID string) (model.Pratica, error) {
 	if f.pratiche == nil {
 		f.pratiche = map[string]model.Pratica{}
