@@ -11,6 +11,7 @@ import (
 type fakePolicyStore struct {
 	allowed []model.AllowedIP
 	blocked []model.BlockedIP
+	securityEvents []model.SecurityEvent
 }
 
 func newPolicyTestServer() *Server {
@@ -66,8 +67,15 @@ func (f *fakePolicyStore) ConfirmPaymentByToken(token string) (model.Pagamento, 
 func (f *fakePolicyStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {
 	return false, nil
 }
-func (f *fakePolicyStore) AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error) { return evt, nil }
-func (f *fakePolicyStore) ListSecurityEvents() []model.SecurityEvent { return nil }
+func (f *fakePolicyStore) AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error) {
+	f.securityEvents = append(f.securityEvents, evt)
+	return evt, nil
+}
+func (f *fakePolicyStore) ListSecurityEvents() []model.SecurityEvent {
+	out := make([]model.SecurityEvent, len(f.securityEvents))
+	copy(out, f.securityEvents)
+	return out
+}
 func (f *fakePolicyStore) GetSecurityEventByID(id string) (model.SecurityEvent, error) {
 	return model.SecurityEvent{}, store.ErrNotFound
 }
