@@ -128,6 +128,16 @@ Frontend web:
 http://localhost:8080/
 ```
 
+Account backoffice predefiniti (seeding dev attivo):
+- Email: `operatore@vistoeasy.local`
+- Email: `supervisore@vistoeasy.local`
+- Email: `admin@vistoeasy.local`
+- Password comune: valore di `BACKOFFICE_SEED_PASSWORD` (default dev: `Admin123!Change`)
+
+Variabili utili:
+- `BACKOFFICE_SEED_ENABLED=true|false` (default: `true` fuori da production)
+- `BACKOFFICE_SEED_PASSWORD=...` (minimo 8 caratteri)
+
 Il frontend include:
 - autenticazione (login/register/forgot/reset/logout/refresh)
 - area richiedente (creazione pratica, submit, documenti)

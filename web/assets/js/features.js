@@ -101,6 +101,10 @@ function isHistoricalPractice(p) {
   return ts < startOfToday.getTime();
 }
 
+function isDraftPractice(p) {
+  return String(p?.stato || '').toUpperCase() === 'BOZZA';
+}
+
 function renderPracticeHistory(items) {
   const container = document.getElementById('storicoPratiche');
   if (!container) return;
@@ -212,8 +216,8 @@ async function loadMiePratiche(preferredPraticaID = '') {
       <h3>${p.codice || p.id} - ${p.stato}</h3>
       <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
       <div class="inline-actions" data-pratica-id="${p.id}">
-        <button class="btn btn-ghost" type="button" data-action="submit">Submit</button>
-        <button class="btn btn-ghost" type="button" data-action="delete">Delete</button>
+        ${isDraftPractice(p) ? '<button class="btn btn-ghost" type="button" data-action="submit">Invia</button>' : ''}
+        ${isDraftPractice(p) ? '<button class="btn btn-ghost" type="button" data-action="delete">Elimina</button>' : ''}
         <button class="btn btn-ghost" type="button" data-action="docs">Documenti</button>
       </div>
     </article>
@@ -221,7 +225,8 @@ async function loadMiePratiche(preferredPraticaID = '') {
 
   els.miePratiche.querySelectorAll('[data-pratica-id]').forEach((bar) => {
     const praticaID = bar.dataset.praticaId;
-    bar.querySelector('[data-action="submit"]').addEventListener('click', async (ev) => {
+    const submitBtn = bar.querySelector('[data-action="submit"]');
+    if (submitBtn) submitBtn.addEventListener('click', async (ev) => {
       try {
         await withBusy(ev.currentTarget, async () => {
           const res = await api(`/api/pratiche/${praticaID}/submit`, { method: 'POST' });
@@ -234,7 +239,8 @@ async function loadMiePratiche(preferredPraticaID = '') {
       }
     });
 
-    bar.querySelector('[data-action="delete"]').addEventListener('click', async (ev) => {
+    const deleteBtn = bar.querySelector('[data-action="delete"]');
+    if (deleteBtn) deleteBtn.addEventListener('click', async (ev) => {
       try {
         await withBusy(ev.currentTarget, async () => {
           await api(`/api/pratiche/${praticaID}`, { method: 'DELETE' });
@@ -689,28 +695,30 @@ function wireSessionButtons() {
     }
   });
 
-  els.btnRefreshSession.addEventListener('click', async (ev) => {
-    try {
-      await withBusy(ev.currentTarget, async () => {
-        if (!state.refreshToken) {
-          out('Refresh saltato', { reason: 'missing refresh token' });
-          notify('err', 'Refresh token mancante');
-          return;
-        }
-        const data = await api('/api/auth/refresh', {
-          method: 'POST',
-          body: JSON.stringify({ refresh_token: state.refreshToken }),
+  if (els.btnRefreshSession) {
+    els.btnRefreshSession.addEventListener('click', async (ev) => {
+      try {
+        await withBusy(ev.currentTarget, async () => {
+          if (!state.refreshToken) {
+            out('Refresh saltato', { reason: 'missing refresh token' });
+            notify('err', 'Refresh token mancante');
+            return;
+          }
+          const data = await api('/api/auth/refresh', {
+            method: 'POST',
+            body: JSON.stringify({ refresh_token: state.refreshToken }),
+          });
+          setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: state.user });
+          renderSessionInfo();
+          applyRoleGuards();
+          out('Sessione aggiornata', { status: 'ok' });
+          notify('ok', 'Sessione aggiornata');
         });
-        setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: state.user });
-        renderSessionInfo();
-        applyRoleGuards();
-        out('Sessione aggiornata', { status: 'ok' });
-        notify('ok', 'Sessione aggiornata');
-      });
-    } catch (err) {
-      notify('err', extractErrMessage(err));
-    }
-  });
+      } catch (err) {
+        notify('err', extractErrMessage(err));
+      }
+    });
+  }
 }
 
 export function initApp(bootMessage) {

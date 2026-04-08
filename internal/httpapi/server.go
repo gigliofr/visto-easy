@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,13 +57,61 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 		windowMinutes = 15
 	}
 
-	return &Server{
+	srv := &Server{
 		store:   st,
 		tokens:  tm,
 		presign: presign,
 		mailer:  notifications.NewEmailSenderFromEnv(),
 		authRL:  newSimpleRateLimiter(limitPerMinute, time.Minute),
 		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
+	}
+	srv.ensureSeedBackofficeUsers()
+	return srv
+}
+
+func shouldSeedBackofficeUsers() bool {
+	enabled := strings.ToLower(strings.TrimSpace(os.Getenv("BACKOFFICE_SEED_ENABLED")))
+	if enabled == "true" || enabled == "1" || enabled == "yes" {
+		return true
+	}
+	if enabled == "false" || enabled == "0" || enabled == "no" {
+		return false
+	}
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	return env != "production"
+}
+
+func (s *Server) ensureSeedBackofficeUsers() {
+	if !shouldSeedBackofficeUsers() {
+		return
+	}
+
+	password := strings.TrimSpace(os.Getenv("BACKOFFICE_SEED_PASSWORD"))
+	if len(password) < 8 {
+		password = "Admin123!Change"
+		log.Printf("[auth] BACKOFFICE_SEED_PASSWORD not set (or too short): using default dev password")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	if err != nil {
+		log.Printf("[auth] unable to generate backoffice seed password hash: %v", err)
+		return
+	}
+
+	now := time.Now().UTC()
+	seeds := []model.Utente{
+		{Email: "operatore@vistoeasy.local", Nome: "Mario", Cognome: "Operatore", Ruolo: model.RoleOperatore, PasswordHash: string(hash), Attivo: true, EmailVerificata: true, CreatoIl: now, AggiornatoIl: now},
+		{Email: "supervisore@vistoeasy.local", Nome: "Luca", Cognome: "Supervisore", Ruolo: model.RoleSupervisore, PasswordHash: string(hash), Attivo: true, EmailVerificata: true, CreatoIl: now, AggiornatoIl: now},
+		{Email: "admin@vistoeasy.local", Nome: "Anna", Cognome: "Admin", Ruolo: model.RoleAdmin, PasswordHash: string(hash), Attivo: true, EmailVerificata: true, CreatoIl: now, AggiornatoIl: now},
+	}
+
+	for _, u := range seeds {
+		if _, err := s.store.GetUserByEmail(u.Email); err == nil {
+			continue
+		}
+		if _, err := s.store.CreateUser(u); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
+			log.Printf("[auth] unable to seed user %s: %v", u.Email, err)
+		}
 	}
 }
 
