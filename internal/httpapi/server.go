@@ -17,16 +17,18 @@ import (
 
 	"visto-easy/internal/auth"
 	"visto-easy/internal/model"
+	storagepkg "visto-easy/internal/storage"
 	"visto-easy/internal/store"
 )
 
 type Server struct {
 	store  store.DataStore
 	tokens *auth.TokenManager
+	presign storagepkg.PresignService
 }
 
-func NewServer(st store.DataStore, tm *auth.TokenManager) *Server {
-	return &Server{store: st, tokens: tm}
+func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.PresignService) *Server {
+	return &Server{store: st, tokens: tm, presign: presign}
 }
 
 func (s *Server) Router() http.Handler {
@@ -52,9 +54,11 @@ func (s *Server) Router() http.Handler {
 			r.Post("/", s.handleCreatePratica)
 			r.Get("/", s.handleListMiePratiche)
 			r.Get("/{id}", s.handleGetPratica)
+			r.Get("/{id}/eventi", s.handleListEventiPratica)
 			r.Patch("/{id}", s.handlePatchPratica)
 			r.Delete("/{id}", s.handleDeletePratica)
 			r.Post("/{id}/submit", s.handleSubmitPratica)
+			r.Post("/{id}/documenti/presign", s.handlePresignDocumento)
 			r.Post("/{id}/documenti", s.handleAddDocumento)
 			r.Get("/{id}/documenti", s.handleListDocumenti)
 		})
@@ -69,6 +73,7 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/pratiche/{id}", s.handleGetPratica)
+			r.Get("/pratiche/{id}/eventi", s.handleListEventiPratica)
 			r.Patch("/pratiche/{id}/stato", s.handleBOChangeStato)
 			r.Post("/pratiche/{id}/note", s.handleBOAddNota)
 			r.Post("/pratiche/{id}/assegna", s.handleBOAssegna)
@@ -273,11 +278,71 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"documento": doc, "upload_url": "https://storage.example/upload/" + doc.ID})
 }
 
+func (s *Server) handlePresignDocumento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	id := chi.URLParam(r, "id")
+	p, err := s.store.GetPratica(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
+
+	var req struct {
+		NomeFile   string `json:"nome_file"`
+		MimeType   string `json:"mime_type"`
+		Dimensione int64  `json:"dimensione"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.NomeFile == "" || !isAllowedMime(req.MimeType) {
+		writeErr(w, http.StatusBadRequest, "file non valido")
+		return
+	}
+	if req.Dimensione <= 0 || req.Dimensione > 10*1024*1024 {
+		writeErr(w, http.StatusBadRequest, "dimensione file non valida")
+		return
+	}
+
+	session, err := s.presign.PresignDocumentUpload(id, req.NomeFile, req.MimeType, req.Dimensione)
+	if err != nil {
+		writeErr(w, http.StatusServiceUnavailable, "storage non configurato")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"upload": session,
+	})
+}
+
 func (s *Server) handleListDocumenti(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	docs, err := s.store.ListDocumenti(id)
 	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
 	writeJSON(w, http.StatusOK, docs)
+}
+
+func (s *Server) handleListEventiPratica(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	id := chi.URLParam(r, "id")
+	p, err := s.store.GetPratica(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	if claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": p.Eventi, "count": len(p.Eventi)})
 }
 
 func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Request) {
@@ -549,6 +614,18 @@ func verifyStripeSignature(secret string, payload []byte, signatureHeader string
 		return false
 	}
 	return hmac.Equal(expected, provided)
+}
+
+func isAllowedMime(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
+	allowed := map[string]bool{
+		"application/pdf": true,
+		"image/jpeg":      true,
+		"image/jpg":       true,
+		"image/png":       true,
+		"image/heic":      true,
+	}
+	return allowed[v]
 }
 
 func hexDecode(v string) ([]byte, error) {

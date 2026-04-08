@@ -8,6 +8,7 @@ import (
 
 	"visto-easy/internal/auth"
 	"visto-easy/internal/httpapi"
+	"visto-easy/internal/storage"
 	"visto-easy/internal/store"
 )
 
@@ -45,7 +46,11 @@ func main() {
 			log.Printf("mongo disconnect error: %v", err)
 		}
 	}()
-	srv := httpapi.NewServer(st, tm)
+	ps, err := storage.NewPresignServiceFromEnv()
+	if err != nil {
+		log.Fatalf("storage init failed: %v", err)
+	}
+	srv := httpapi.NewServer(st, tm, ps)
 
 	log.Printf("visto-easy listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, srv.Router()); err != nil {

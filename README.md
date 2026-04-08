@@ -7,6 +7,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Auth JWT + refresh token (`RICHIEDENTE`, `OPERATORE`, `SUPERVISORE`, `ADMIN`)
 - Pratiche richiedente: create/list/get/patch/delete (solo in `BOZZA`)
 - Documenti pratica: upload metadata + lista
+- Presigned upload URL per documenti (S3/MinIO)
 - Backoffice: lista pratiche, cambio stato, link pagamento, invio visto, stats dashboard
 - Pagamenti: creazione sessione, query stato, webhook `payment.succeeded`
 - Macchina stati pratica con validazione transizioni
@@ -22,7 +23,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `PATCH /api/pratiche/{id}`
 - `DELETE /api/pratiche/{id}`
 - `POST /api/pratiche/{id}/documenti`
+- `POST /api/pratiche/{id}/documenti/presign`
 - `GET /api/pratiche/{id}/documenti`
+- `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `PATCH /api/bo/pratiche/{id}/stato`
 - `POST /api/bo/pratiche/{id}/link-pagamento`
@@ -69,6 +72,9 @@ MONGODB_URL=
 REDIS_URL=
 S3_ENDPOINT=
 S3_BUCKET=
+S3_ACCESS_KEY=
+S3_SECRET_KEY=
+S3_USE_SSL=true
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 SENDGRID_API_KEY=
