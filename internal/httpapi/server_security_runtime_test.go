@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -237,5 +238,79 @@ func TestSecurityAlertsStreamIgnoresNonLoginAndOldLockedEvents(t *testing.T) {
 	}
 	if !strings.Contains(body, `"recent_failed_logins":0`) || !strings.Contains(body, `"recent_locked_logins":0`) {
 		t.Fatalf("expected zero recent login alerts in snapshot: body=%s", body)
+	}
+}
+
+func TestBOSecurityEventsListSupportsCombinedFilters(t *testing.T) {
+	s, st, token := newSecurityHTTPTestServer(t)
+	now := time.Now().UTC()
+	from := now.Add(-3 * time.Minute).Unix()
+	to := now.Add(-30 * time.Second).Format(time.RFC3339)
+
+	st.securityEvents = []model.SecurityEvent{
+		{ID: "e1", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", Email: "alpha@example.com", IP: "203.0.113.31", UserAgent: "Mozilla", CreatoIl: now.Add(-10 * time.Minute)},
+		{ID: "e2", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", Email: "beta@example.com", IP: "203.0.113.32", UserAgent: "Mozilla", CreatoIl: now.Add(-2 * time.Minute)},
+		{ID: "e3", Type: "LOGIN_LOCKED", Outcome: "blocked", Email: "beta@example.com", IP: "203.0.113.32", UserAgent: "curl", CreatoIl: now.Add(-1 * time.Minute)},
+		{ID: "e4", Type: "LOGIN_FAILED", Outcome: "invalid_email", Email: "", IP: "203.0.113.33", UserAgent: "bot", CreatoIl: now.Add(-45 * time.Second)},
+	}
+
+	url := "/api/bo/security-events?type=login_failed&outcome=invalid_credentials&q=beta&from=" + strconv.FormatInt(from, 10) + "&to=" + to
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	resp := decodeMap(t, rr)
+	if resp["total"] != float64(1) || resp["count"] != float64(1) {
+		t.Fatalf("expected exactly one filtered event: %#v", resp)
+	}
+	items, ok := resp["items"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("unexpected items payload: %#v", resp)
+	}
+	item, ok := items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("invalid item payload: %#v", items[0])
+	}
+	if item["id"] != "e2" {
+		t.Fatalf("unexpected filtered event id: %#v", item)
+	}
+}
+
+func TestBOSecurityEventsCSVSupportsOutcomeAndTimeFilters(t *testing.T) {
+	s, st, token := newSecurityHTTPTestServer(t)
+	now := time.Now().UTC()
+	from := now.Add(-90 * time.Second).Format(time.RFC3339)
+	to := now.Add(10 * time.Second).Unix()
+
+	st.securityEvents = []model.SecurityEvent{
+		{ID: "e-old", Type: "LOGIN_LOCKED", Outcome: "blocked", Email: "old@example.com", IP: "203.0.113.40", CreatoIl: now.Add(-5 * time.Minute)},
+		{ID: "e-target", Type: "LOGIN_LOCKED", Outcome: "blocked", Email: "target@example.com", IP: "203.0.113.41", CreatoIl: now.Add(-1 * time.Minute)},
+		{ID: "e-other", Type: "LOGIN_FAILED", Outcome: "invalid_credentials", Email: "other@example.com", IP: "203.0.113.42", CreatoIl: now.Add(-30 * time.Second)},
+	}
+
+	url := "/api/bo/security-events/report.csv?outcome=blocked&from=" + from + "&to=" + strconv.FormatInt(to, 10)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	rows, err := csv.NewReader(strings.NewReader(rr.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("invalid csv: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected header + 1 row, got=%d body=%s", len(rows), rr.Body.String())
+	}
+	if rows[1][0] != "e-target" || rows[1][2] != "blocked" {
+		t.Fatalf("unexpected filtered csv row: %v", rows[1])
 	}
 }
