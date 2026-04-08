@@ -58,6 +58,12 @@ function writePracticeHistory(items) {
   }
 }
 
+function removePracticeFromHistory(praticaID) {
+  if (!praticaID) return;
+  const next = readPracticeHistory().filter((item) => item?.id !== praticaID);
+  writePracticeHistory(next);
+}
+
 function normalizePracticeEntry(p) {
   return {
     id: p.id || '',
@@ -232,6 +238,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
       try {
         await withBusy(ev.currentTarget, async () => {
           await api(`/api/pratiche/${praticaID}`, { method: 'DELETE' });
+          removePracticeFromHistory(praticaID);
           out('Pratica eliminata', { id: praticaID });
           notify('ok', 'Pratica eliminata');
           await loadMiePratiche();
