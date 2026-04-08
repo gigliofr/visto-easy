@@ -195,6 +195,11 @@ h1 {
   font-size: 0.86rem;
 }
 
+.section-title {
+  margin: 14px 0 6px;
+  font-size: 1rem;
+}
+
 .tabs {
   display: flex;
   gap: 8px;

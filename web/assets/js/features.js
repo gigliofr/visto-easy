@@ -31,6 +31,83 @@ const FALLBACK_COUNTRIES = [
   { code: 'SG', label: 'Singapore', flag: '🇸🇬' },
 ];
 
+const PRACTICE_HISTORY_KEY = 'visto_easy_practice_history_v1';
+const FINAL_PRACTICE_STATUSES = new Set(['APPROVATA', 'RIFIUTATA', 'ANNULLATA', 'COMPLETATA', 'CHIUSA']);
+
+function parseTs(value) {
+  const ts = Date.parse(value || '');
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function readPracticeHistory() {
+  try {
+    const raw = window.localStorage.getItem(PRACTICE_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writePracticeHistory(items) {
+  try {
+    window.localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(items.slice(0, 300)));
+  } catch (_err) {
+    // Ignore storage errors to avoid blocking the main workflow.
+  }
+}
+
+function normalizePracticeEntry(p) {
+  return {
+    id: p.id || '',
+    codice: p.codice || p.id || '-',
+    stato: p.stato || '-',
+    tipo_visto: p.tipo_visto || '-',
+    paese_dest: p.paese_dest || '-',
+    creato_il: p.creato_il || new Date().toISOString(),
+  };
+}
+
+function mergePracticeHistory(pratiche) {
+  const current = Array.isArray(pratiche) ? pratiche.map(normalizePracticeEntry) : [];
+  const byID = {};
+  readPracticeHistory().forEach((item) => {
+    if (item && item.id) byID[item.id] = item;
+  });
+  current.forEach((item) => {
+    if (!item.id) return;
+    byID[item.id] = { ...byID[item.id], ...item };
+  });
+  const merged = Object.values(byID).sort((a, b) => parseTs(b.creato_il) - parseTs(a.creato_il));
+  writePracticeHistory(merged);
+  return merged;
+}
+
+function isHistoricalPractice(p) {
+  const stato = String(p.stato || '').toUpperCase();
+  if (FINAL_PRACTICE_STATUSES.has(stato)) return true;
+
+  const ts = parseTs(p.creato_il);
+  if (!ts) return false;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  return ts < startOfToday.getTime();
+}
+
+function renderPracticeHistory(items) {
+  const container = document.getElementById('storicoPratiche');
+  if (!container) return;
+
+  const historical = (items || []).filter(isHistoricalPractice);
+  renderList(container, historical, (p) => `
+    <article class="list-item">
+      <h3>${p.codice || p.id} - ${p.stato || '-'}</h3>
+      <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
+    </article>
+  `);
+}
+
 function toCountryOption(item) {
   const code = (item.cca2 || '').toUpperCase();
   const label = item.name?.common || code;
@@ -119,8 +196,12 @@ async function loadMiePratiche(preferredPraticaID = '') {
     return;
   }
   const data = await api('/api/pratiche/');
-  populateDocPraticaSelect(data, preferredPraticaID);
-  renderList(els.miePratiche, data, (p) => `
+  const history = mergePracticeHistory(data);
+  renderPracticeHistory(history);
+
+  const operative = data.filter((p) => !isHistoricalPractice(p));
+  populateDocPraticaSelect(operative.length > 0 ? operative : data, preferredPraticaID);
+  renderList(els.miePratiche, operative, (p) => `
     <article class="list-item">
       <h3>${p.codice || p.id} - ${p.stato}</h3>
       <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
@@ -175,7 +256,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
     });
   });
 
-  out('Pratiche caricate', { count: data.length });
+  out('Pratiche caricate', { operative: operative.length, storico: history.length });
 }
 
 function computeStatusBreakdown(items) {
