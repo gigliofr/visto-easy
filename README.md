@@ -10,6 +10,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Presigned upload URL per documenti (S3/MinIO)
 - Backoffice: lista pratiche, cambio stato, link pagamento, invio visto, stats dashboard
 - Pagamenti: creazione sessione, query stato, webhook `payment.succeeded`
+- Webhook pagamenti idempotente con deduplicazione `event_id`/`id`
 - Macchina stati pratica con validazione transizioni
 
 ## API principali
@@ -35,6 +36,11 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `POST /api/bo/pratiche/{id}/invia-visto`
 - `GET /api/bo/dashboard/stats`
 - `POST /api/pagamento/webhook`
+
+Payload webhook supportato (compatibile anche con schema Stripe base):
+- `event` oppure `type` (es. `payment.succeeded`)
+- `event_id` oppure `id`
+- `token` diretto oppure `data.object.metadata.token` / `data.object.client_reference_id`
 
 ## Query params utili (backoffice)
 

@@ -23,4 +23,5 @@ type DataStore interface {
 	CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error)
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)
+	MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error)
 }

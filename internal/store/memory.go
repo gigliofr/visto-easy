@@ -26,6 +26,7 @@ type MemoryStore struct {
 	users     map[string]model.Utente
 	pratiche  map[string]model.Pratica
 	payments  map[string]model.Pagamento
+	webhooks  map[string]time.Time
 	byEmail   map[string]string
 	counters  map[string]*atomic.Uint64
 }
@@ -35,6 +36,7 @@ func NewMemoryStore() *MemoryStore {
 		users:    make(map[string]model.Utente),
 		pratiche: make(map[string]model.Pratica),
 		payments: make(map[string]model.Pagamento),
+		webhooks: make(map[string]time.Time),
 		byEmail:  make(map[string]string),
 		counters: map[string]*atomic.Uint64{"pratica": {}},
 	}
@@ -265,4 +267,18 @@ func (s *MemoryStore) ConfirmPaymentByToken(token string) (model.Pagamento, erro
 		return p, nil
 	}
 	return model.Pagamento{}, ErrNotFound
+}
+
+func (s *MemoryStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := strings.ToLower(strings.TrimSpace(provider)) + ":" + strings.TrimSpace(eventID)
+	if key == ":" {
+		return false, ErrForbiddenState
+	}
+	if _, ok := s.webhooks[key]; ok {
+		return true, nil
+	}
+	s.webhooks[key] = time.Now().UTC()
+	return false, nil
 }

@@ -427,22 +427,43 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	var req struct { Token, Event string }
-	if err := json.Unmarshal(body, &req); err != nil {
+	info, err := parseWebhookPaymentInfo(body)
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, "payload non valido")
 		return
 	}
-	if strings.ToLower(req.Event) != "payment.succeeded" {
+	if strings.ToLower(info.Event) != "payment.succeeded" {
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ignored"})
 		return
 	}
-	pay, err := s.store.ConfirmPaymentByToken(req.Token)
+	if strings.TrimSpace(info.Token) == "" {
+		writeErr(w, http.StatusBadRequest, "token pagamento mancante")
+		return
+	}
+
+	existingPay, err := s.store.GetPaymentByToken(info.Token)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		return
+	}
+
+	alreadyProcessed, err := s.store.MarkWebhookEventProcessed("stripe", info.EventID, existingPay.ID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore deduplicazione webhook")
+		return
+	}
+	if alreadyProcessed {
+		writeJSON(w, http.StatusOK, map[string]any{"status": "duplicate_ignored", "event_id": info.EventID})
+		return
+	}
+
+	pay, err := s.store.ConfirmPaymentByToken(info.Token)
 	if err != nil { writeErr(w, http.StatusNotFound, "pagamento non trovato"); return }
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoPagamentoRicevuto, "webhook provider")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoInElaborazione, "generazione visto")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoEmesso, "visto emesso")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoCompletata, "visto consegnato")
-	writeJSON(w, http.StatusOK, map[string]any{"status": "processed"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "processed", "event_id": info.EventID})
 }
 
 func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
@@ -907,6 +928,57 @@ func parseOptionalTime(raw string) time.Time {
 		return time.Unix(unix, 0).UTC()
 	}
 	return time.Time{}
+}
+
+type webhookPaymentInfo struct {
+	Event   string
+	EventID string
+	Token   string
+}
+
+func parseWebhookPaymentInfo(body []byte) (webhookPaymentInfo, error) {
+	var raw struct {
+		Event   string `json:"event"`
+		EventID string `json:"event_id"`
+		Token   string `json:"token"`
+		ID      string `json:"id"`
+		Type    string `json:"type"`
+		Data    struct {
+			Object struct {
+				ClientReferenceID string            `json:"client_reference_id"`
+				Metadata          map[string]string `json:"metadata"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return webhookPaymentInfo{}, err
+	}
+
+	event := strings.TrimSpace(raw.Event)
+	if event == "" {
+		event = strings.TrimSpace(raw.Type)
+	}
+	eventID := strings.TrimSpace(raw.EventID)
+	if eventID == "" {
+		eventID = strings.TrimSpace(raw.ID)
+	}
+	token := strings.TrimSpace(raw.Token)
+	if token == "" && raw.Data.Object.Metadata != nil {
+		token = strings.TrimSpace(raw.Data.Object.Metadata["token"])
+	}
+	if token == "" {
+		token = strings.TrimSpace(raw.Data.Object.ClientReferenceID)
+	}
+	if eventID == "" {
+		eventID = webhookPayloadFingerprint(body)
+	}
+
+	return webhookPaymentInfo{Event: strings.ToLower(event), EventID: eventID, Token: token}, nil
+}
+
+func webhookPayloadFingerprint(body []byte) string {
+	sum := sha256.Sum256(body)
+	return "sha256:" + hex.EncodeToString(sum[:12])
 }
 
 func verifyStripeSignature(secret string, payload []byte, signatureHeader string) bool {

@@ -21,6 +21,7 @@ type MongoStore struct {
 	users      *mongo.Collection
 	pratiche   *mongo.Collection
 	pagamenti  *mongo.Collection
+	webhooks   *mongo.Collection
 	counters   *mongo.Collection
 }
 
@@ -43,6 +44,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		users:     db.Collection("utenti"),
 		pratiche:  db.Collection("pratiche"),
 		pagamenti: db.Collection("pagamenti"),
+		webhooks:  db.Collection("webhook_events"),
 		counters:  db.Collection("counters"),
 	}
 	if err := s.ensureIndexes(context.Background()); err != nil {
@@ -81,6 +83,13 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("pagamenti index creation failed: %w", err)
+	}
+	_, err = s.webhooks.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "provider", Value: 1}, {Key: "eventid", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "creatoil", Value: -1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("webhook_events index creation failed: %w", err)
 	}
 	return nil
 }
@@ -504,6 +513,37 @@ func (s *MongoStore) ConfirmPaymentByToken(token string) (model.Pagamento, error
 		return model.Pagamento{}, ErrNotFound
 	}
 	return s.GetPaymentByToken(token)
+}
+
+func (s *MongoStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	rec := struct {
+		ID        string    `bson:"id"`
+		Provider  string    `bson:"provider"`
+		EventID   string    `bson:"eventid"`
+		PaymentID string    `bson:"paymentid"`
+		CreatoIl  time.Time `bson:"creatoil"`
+	}{
+		ID:        uuid.NewString(),
+		Provider:  strings.ToLower(strings.TrimSpace(provider)),
+		EventID:   strings.TrimSpace(eventID),
+		PaymentID: strings.TrimSpace(paymentID),
+		CreatoIl:  time.Now().UTC(),
+	}
+	if rec.Provider == "" || rec.EventID == "" {
+		return false, ErrForbiddenState
+	}
+
+	_, err := s.webhooks.InsertOne(ctx, rec)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 func errorsIsNotFound(err error) bool {
