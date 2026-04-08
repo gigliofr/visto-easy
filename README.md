@@ -15,6 +15,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Audit sicurezza login/rate-limit con endpoint backoffice
 - Denylist IP backoffice con persistenza datastore (riavvio-safe)
 - Macchina stati pratica con validazione transizioni
+- Frontend web completo responsive in `web/` con moduli Auth, Richiedente e Backoffice
 
 ## API principali
 
@@ -120,6 +121,17 @@ Health:
 ```bash
 curl http://localhost:8080/api/v1/health
 ```
+
+Frontend web:
+
+```bash
+http://localhost:8080/
+```
+
+Il frontend include:
+- autenticazione (login/register/forgot/reset/logout/refresh)
+- area richiedente (creazione pratica, submit, documenti)
+- area backoffice (pratiche, utenti, audit eventi, cambio stato, note)
 
 ## Deploy (Coolify / Railway)
 
