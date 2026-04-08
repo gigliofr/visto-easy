@@ -123,6 +123,22 @@ h1 {
   text-decoration: none;
 }
 
+.hero-meta .api-base-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.hero-meta .api-base-label input {
+  width: 220px;
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
 .hero-cta {
   margin-top: 26px;
   display: flex;
@@ -146,6 +162,12 @@ h1 {
 
 .btn:hover {
   transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  transform: none;
 }
 
 .btn-solid {
@@ -176,6 +198,10 @@ h1 {
   border-radius: 22px;
   padding: 18px;
   box-shadow: 0 8px 24px rgba(16, 17, 19, 0.06);
+}
+
+.panel.hidden {
+  display: none;
 }
 
 .panel-head h2 {
@@ -262,6 +288,32 @@ textarea:focus {
   gap: 10px;
 }
 
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.kpi {
+  border: 1px solid #e3e7ee;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+}
+
+.kpi h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.kpi p {
+  margin: 6px 0 0;
+  font-size: 1.08rem;
+  font-weight: 800;
+}
+
 .list {
   display: grid;
   gap: 10px;
@@ -330,6 +382,33 @@ textarea:focus {
   font-size: 0.8rem;
 }
 
+.toast-region {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(360px, 92vw);
+}
+
+.toast {
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dde2ea;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(16, 17, 19, 0.14);
+  font-size: 0.88rem;
+}
+
+.toast.ok {
+  border-color: #8fd2b0;
+}
+
+.toast.err {
+  border-color: #f0a6a8;
+}
+
 .footer {
   border-top: 1px solid #dfe1e8;
   padding: 18px 0 28px;
@@ -357,6 +436,10 @@ textarea:focus {
   .app-grid {
     grid-template-columns: 1fr;
   }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 640px) {
@@ -367,6 +450,10 @@ textarea:focus {
   nav {
     flex-wrap: wrap;
     gap: 10px 14px;
+  }
+
+  .hero-meta .api-base-label input {
+    width: 140px;
   }
 
   .footer-inner {

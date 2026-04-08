@@ -35,6 +35,10 @@
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
         <a href="/api/v1/health">API Health</a>
+        <label class="api-base-label">API Base
+          <input id="apiBaseInput" type="text" placeholder="es. http://localhost:8080" />
+        </label>
+        <button id="btnSaveApiBase" class="btn btn-ghost" type="button">Salva base</button>
       </div>
     </section>
 
@@ -126,6 +130,12 @@
           <p>Pratiche, utenti, audit eventi.</p>
         </div>
 
+        <div id="boKpi" class="kpi-grid">
+          <article class="kpi"><h3>Pratiche</h3><p id="kpiPratiche">-</p></article>
+          <article class="kpi"><h3>Utenti</h3><p id="kpiUtenti">-</p></article>
+          <article class="kpi"><h3>Audit</h3><p id="kpiAudit">-</p></article>
+        </div>
+
         <form id="formBOFilters" class="inline-form">
           <label>Query<input name="q" type="text" placeholder="codice o email"></label>
           <label>Stato<input name="stato" type="text" placeholder="INVIATA"></label>
@@ -159,6 +169,26 @@
           </label>
           <button class="btn btn-ghost" type="submit">Aggiungi nota</button>
         </form>
+
+        <form id="formBOAssign" class="inline-form">
+          <label>Pratica ID<input name="id" type="text" required></label>
+          <label>Operatore ID<input name="operatore_id" type="text" required></label>
+          <button class="btn btn-ghost" type="submit">Assegna operatore</button>
+        </form>
+
+        <form id="formBORequestDoc" class="inline-form">
+          <label>Pratica ID<input name="id" type="text" required></label>
+          <label>Documento<input name="documento" type="text" required placeholder="PASSAPORTO"></label>
+          <label>Nota<input name="nota" type="text" placeholder="allega documento leggibile"></label>
+          <button class="btn btn-ghost" type="submit">Richiedi documento</button>
+        </form>
+
+        <form id="formBOPaymentLink" class="inline-form">
+          <label>Pratica ID<input name="id" type="text" required></label>
+          <label>Importo<input name="importo" type="number" required value="50"></label>
+          <label>Provider<input name="provider" type="text" value="stripe"></label>
+          <button class="btn btn-solid" type="submit">Crea link pagamento</button>
+        </form>
       </article>
     </section>
 
@@ -174,6 +204,8 @@
       <p>Frontend completo responsive</p>
     </div>
   </footer>
+
+  <section id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></section>
 
   <script src="/assets/app.js"></script>
 </body>

@@ -131,7 +131,11 @@ http://localhost:8080/
 Il frontend include:
 - autenticazione (login/register/forgot/reset/logout/refresh)
 - area richiedente (creazione pratica, submit, documenti)
-- area backoffice (pratiche, utenti, audit eventi, cambio stato, note)
+- area backoffice (pratiche, utenti, audit eventi, cambio stato, note, assegnazione operatore, richiesta documenti, link pagamento)
+- guardie ruolo client-side (richiedente/backoffice)
+- configurazione API base URL da UI (utile per deploy FE/BE separati)
+- UX robusta: toast feedback, loading state pulsanti, output debug strutturato
+- mini dashboard KPI backoffice (totali pratiche/utenti/audit)
 
 ## Deploy (Coolify / Railway)
 
