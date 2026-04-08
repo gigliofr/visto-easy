@@ -33,53 +33,18 @@ body {
   width: min(1100px, 92vw);
   margin: 0 auto;
 }
-
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  backdrop-filter: blur(12px);
-  background: rgba(245, 245, 247, 0.78);
-  border-bottom: 1px solid rgba(217, 219, 225, 0.7);
-}
-
-.nav {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 18px;
-  align-items: center;
-  padding: 14px 0;
-}
-
-.top-actions {
-  display: flex;
-  gap: 10px;
-}
-
-.brand {
-  font-weight: 800;
-  letter-spacing: 0.02em;
-}
-
-nav {
-  display: flex;
-  gap: 18px;
-}
-
-nav a,
 .footer a {
   color: var(--text);
   text-decoration: none;
   opacity: 0.82;
 }
 
-nav a:hover,
 .footer a:hover {
   opacity: 1;
 }
 
 .hero {
-  padding: 56px 0 34px;
+  padding: 44px 0 34px;
   text-align: center;
 }
 
@@ -113,7 +78,8 @@ h1 {
 }
 
 .hero-meta span,
-.hero-meta a {
+.hero-meta a,
+.hero-meta button {
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--line);
   padding: 6px 10px;
@@ -121,6 +87,14 @@ h1 {
   font-size: 0.88rem;
   color: var(--muted);
   text-decoration: none;
+}
+
+.flow-nav {
+  margin-top: 22px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .hero-meta .api-base-label {
@@ -273,6 +247,20 @@ textarea {
   font: inherit;
 }
 
+input[type="file"] {
+  padding: 8px;
+}
+
+input[type="file"]::file-selector-button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text);
+  padding: 6px 12px;
+  margin-right: 10px;
+  font-weight: 700;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -382,6 +370,10 @@ textarea:focus {
   font-size: 0.8rem;
 }
 
+.hidden-tech {
+  display: none;
+}
+
 .toast-region {
   position: fixed;
   right: 14px;
@@ -426,13 +418,17 @@ textarea:focus {
   color: var(--muted);
 }
 
-@media (max-width: 920px) {
-  .nav {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    justify-items: start;
-  }
+.legal-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
+.legal-links span {
+  color: #a0a4af;
+}
+
+@media (max-width: 920px) {
   .app-grid {
     grid-template-columns: 1fr;
   }
@@ -445,11 +441,6 @@ textarea:focus {
 @media (max-width: 640px) {
   .hero {
     padding-top: 44px;
-  }
-
-  nav {
-    flex-wrap: wrap;
-    gap: 10px 14px;
   }
 
   .hero-meta .api-base-label input {

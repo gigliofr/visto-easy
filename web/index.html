@@ -11,34 +11,26 @@
   <link rel="stylesheet" href="/assets/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="container nav">
-      <div class="brand">Visto Easy</div>
-      <nav>
-        <a href="#auth">Auth</a>
-        <a href="#richiedente">Richiedente</a>
-        <a href="#backoffice">Backoffice</a>
-      </nav>
-      <div class="top-actions">
-        <button class="btn btn-ghost" id="btnRefreshSession" type="button">Refresh</button>
-        <button class="btn btn-solid" id="btnLogout" type="button">Logout</button>
-      </div>
-    </div>
-  </header>
-
   <main>
     <section class="hero container">
-      <p class="eyebrow">Frontend completo</p>
-      <h1>Design minimale.<br>Flussi reali.</h1>
-      <p class="subtitle">Un'unica interfaccia per autenticazione, pratiche del richiedente, operazioni backoffice e monitoraggio audit.</p>
+      <p class="eyebrow">Visto Easy</p>
+      <h1>Il tuo visto, pronto a partire.</h1>
+      <p class="subtitle">Compila la richiesta, carica i documenti e segui ogni avanzamento in un flusso semplice, veloce e affidabile.</p>
+      <div class="flow-nav">
+        <a class="btn btn-solid" href="#auth">Inizia ora</a>
+        <a class="btn btn-ghost" href="#richiedente">Area Richiedente</a>
+        <a class="btn btn-ghost" href="/backoffice">Backoffice</a>
+      </div>
       <div class="hero-meta">
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
-        <a href="/api/v1/health">API Health</a>
-        <label class="api-base-label">API Base
-          <input id="apiBaseInput" type="text" placeholder="es. http://localhost:8080" />
-        </label>
-        <button id="btnSaveApiBase" class="btn btn-ghost" type="button">Salva base</button>
+        <button class="btn btn-ghost" id="btnRefreshSession" type="button">Aggiorna sessione</button>
+        <button class="btn btn-solid" id="btnLogout" type="button">Esci</button>
+      </div>
+
+      <div class="hidden-tech" aria-hidden="true">
+        <input id="apiBaseInput" type="hidden" />
+        <button id="btnSaveApiBase" type="button" hidden>Salva base</button>
       </div>
     </section>
 
@@ -104,8 +96,21 @@
           <p>Crea pratica, gestisci documenti e invia in revisione.</p>
         </div>
         <form id="formCreatePratica" class="inline-form">
-          <label>Tipo visto<input name="tipo_visto" type="text" required placeholder="TURISMO"></label>
-          <label>Paese<input name="paese_dest" type="text" required placeholder="JP"></label>
+          <label>Tipo visto
+            <select name="tipo_visto" required>
+              <option value="" disabled selected>Seleziona un tipo visto</option>
+              <option value="TURISMO">Turismo</option>
+              <option value="STUDIO">Studio</option>
+              <option value="LAVORO">Lavoro</option>
+              <option value="BUSINESS">Business</option>
+              <option value="TRANSITO">Transito</option>
+            </select>
+          </label>
+          <label>Paese di destinazione
+            <select name="paese_dest" id="paeseSelect" required>
+              <option value="" disabled selected>Caricamento paesi...</option>
+            </select>
+          </label>
           <button class="btn btn-solid" type="submit">Nuova pratica</button>
         </form>
 
@@ -116,10 +121,22 @@
 
         <form id="formDocUpload" class="inline-form">
           <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Tipo doc<input name="tipo" type="text" required placeholder="PASSAPORTO"></label>
-          <label>Nome file<input name="nome_file" type="text" required placeholder="passport.pdf"></label>
-          <label>MIME<input name="mime_type" type="text" required value="application/pdf"></label>
-          <label>Dimensione<input name="dimensione" type="number" required value="2048"></label>
+          <label>Tipo documento
+            <select name="tipo" required>
+              <option value="" disabled selected>Seleziona documento</option>
+              <option value="PASSAPORTO">Passaporto</option>
+              <option value="FOTO">Foto</option>
+              <option value="BIGLIETTO">Prenotazione viaggio</option>
+              <option value="ASSICURAZIONE">Assicurazione</option>
+              <option value="ALTRO">Altro</option>
+            </select>
+          </label>
+          <label>File (immagine o PDF)
+            <input name="file_upload" type="file" accept="image/*,application/pdf" required>
+          </label>
+          <input name="nome_file" type="hidden">
+          <input name="mime_type" type="hidden">
+          <input name="dimensione" type="hidden">
           <button class="btn btn-ghost" type="submit">Aggiungi documento</button>
         </form>
       </article>
@@ -192,16 +209,17 @@
       </article>
     </section>
 
-    <section class="container output-wrap">
-      <h2>Output</h2>
-      <pre id="appOutput" class="output"></pre>
-    </section>
+    <pre id="appOutput" class="output" hidden></pre>
   </main>
 
   <footer class="footer">
     <div class="container footer-inner">
       <p>Visto Easy</p>
-      <p>Frontend completo responsive</p>
+      <p class="legal-links">
+        <a href="/privacy-policy">Privacy Policy</a>
+        <span>•</span>
+        <a href="/cookie-policy">Cookie Policy</a>
+      </p>
     </div>
   </footer>
 

@@ -74,11 +74,14 @@ func (s *Server) Router() http.Handler {
 	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(resolveWebPath(filepath.Join("assets"))))))
 
 	r.Get("/", s.handleRoot)
+	r.Get("/backoffice", s.handleRoot)
 	r.Get("/index.html", func(w http.ResponseWriter, r *http.Request) {
 		r2 := r.Clone(r.Context())
 		r2.URL.Path = "/"
 		s.handleRoot(w, r2)
 	})
+	r.Get("/privacy-policy", s.handlePrivacyPolicy)
+	r.Get("/cookie-policy", s.handleCookiePolicy)
 	r.Get("/api/v1/health", s.handleHealth)
 	r.Post("/api/pagamento/webhook", s.handlePagamentoWebhook)
 
@@ -176,6 +179,16 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})
+}
+
+func (s *Server) handlePrivacyPolicy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, resolveWebPath("privacy-policy.html"))
+}
+
+func (s *Server) handleCookiePolicy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, resolveWebPath("cookie-policy.html"))
 }
 
 func resolveWebPath(relative string) string {

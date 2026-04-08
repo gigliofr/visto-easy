@@ -20,6 +20,68 @@ import {
   state,
 } from './session.js';
 
+const FALLBACK_COUNTRIES = [
+  { code: 'IT', label: 'Italia', flag: '🇮🇹' },
+  { code: 'US', label: 'Stati Uniti', flag: '🇺🇸' },
+  { code: 'GB', label: 'Regno Unito', flag: '🇬🇧' },
+  { code: 'CA', label: 'Canada', flag: '🇨🇦' },
+  { code: 'AU', label: 'Australia', flag: '🇦🇺' },
+  { code: 'JP', label: 'Giappone', flag: '🇯🇵' },
+  { code: 'AE', label: 'Emirati Arabi Uniti', flag: '🇦🇪' },
+  { code: 'SG', label: 'Singapore', flag: '🇸🇬' },
+];
+
+function toCountryOption(item) {
+  const code = (item.cca2 || '').toUpperCase();
+  const label = item.name?.common || code;
+  const flag = item.flag || '';
+  return { code, label, flag };
+}
+
+async function loadCountriesIntoSelect() {
+  const select = document.getElementById('paeseSelect');
+  if (!select) return;
+
+  let countries = [];
+  try {
+    const res = await fetch('https://restcountries.com/v3.1/all?fields=cca2,name,flag');
+    if (!res.ok) throw new Error(`restcountries ${res.status}`);
+    const rows = await res.json();
+    countries = rows.map(toCountryOption).filter((c) => c.code && c.label);
+  } catch (_err) {
+    countries = FALLBACK_COUNTRIES;
+  }
+
+  countries.sort((a, b) => a.label.localeCompare(b.label, 'it'));
+  select.innerHTML = [
+    '<option value="" disabled selected>Seleziona paese</option>',
+    ...countries.map((c) => `<option value="${c.code}">${c.flag} ${c.label} (${c.code})</option>`),
+  ].join('');
+}
+
+function wireDocUploadMetadata() {
+  const form = document.getElementById('formDocUpload');
+  if (!form) return;
+  const fileInput = form.querySelector('input[name="file_upload"]');
+  const nameInput = form.querySelector('input[name="nome_file"]');
+  const mimeInput = form.querySelector('input[name="mime_type"]');
+  const sizeInput = form.querySelector('input[name="dimensione"]');
+  if (!fileInput || !nameInput || !mimeInput || !sizeInput) return;
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file) {
+      nameInput.value = '';
+      mimeInput.value = '';
+      sizeInput.value = '';
+      return;
+    }
+    nameInput.value = file.name || 'documento';
+    mimeInput.value = file.type || 'application/octet-stream';
+    sizeInput.value = String(file.size || 0);
+  });
+}
+
 function wireTabs() {
   document.querySelectorAll('#authTabs .tab').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -534,10 +596,16 @@ function wireSessionButtons() {
 }
 
 export function initApp(bootMessage) {
+  if (window.location.pathname.toLowerCase().startsWith('/backoffice')) {
+    window.location.hash = '#backoffice';
+  }
+
   renderSessionInfo();
   wireTabs();
   wireForms();
   wireSessionButtons();
+  wireDocUploadMetadata();
+  loadCountriesIntoSelect().catch(() => {});
   setSectionFromHash();
   applyRoleGuards();
   window.addEventListener('hashchange', () => {
