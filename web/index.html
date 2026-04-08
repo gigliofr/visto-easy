@@ -94,59 +94,76 @@
           <h2>Area Richiedente</h2>
           <p>Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
         </div>
-        <form id="formCreatePratica" class="inline-form">
-          <label>Tipo visto
-            <select name="tipo_visto" required>
-              <option value="" disabled selected>Seleziona un tipo visto</option>
-              <option value="TURISMO">Turismo</option>
-              <option value="STUDIO">Studio</option>
-              <option value="LAVORO">Lavoro</option>
-              <option value="BUSINESS">Business</option>
-              <option value="TRANSITO">Transito</option>
-            </select>
-          </label>
-          <label>Paese di destinazione
-            <select name="paese_dest" id="paeseSelect" required>
-              <option value="" disabled selected>Caricamento paesi...</option>
-            </select>
-          </label>
-          <button class="btn btn-solid" type="submit">Crea nuova pratica</button>
-        </form>
-        <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai qui sotto e potrai allegare i documenti.</p>
+        <div class="rich-layout">
+          <section class="rich-col">
+            <div class="surface-block">
+              <h3 class="section-title">1. Crea pratica</h3>
+              <form id="formCreatePratica" class="inline-form">
+                <label>Tipo visto
+                  <select name="tipo_visto" required>
+                    <option value="" disabled selected>Seleziona un tipo visto</option>
+                    <option value="TURISMO">Turismo</option>
+                    <option value="STUDIO">Studio</option>
+                    <option value="LAVORO">Lavoro</option>
+                    <option value="BUSINESS">Business</option>
+                    <option value="TRANSITO">Transito</option>
+                  </select>
+                </label>
+                <label>Paese di destinazione
+                  <select name="paese_dest" id="paeseSelect" required>
+                    <option value="" disabled selected>Caricamento paesi...</option>
+                  </select>
+                </label>
+                <button class="btn btn-solid" type="submit">Crea nuova pratica</button>
+              </form>
+              <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai qui sotto e potrai allegare i documenti.</p>
+            </div>
 
-        <div class="toolbar">
-          <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
+            <div class="surface-block">
+              <div class="toolbar">
+                <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
+              </div>
+              <h3 class="section-title">2. Pratiche attive</h3>
+              <div id="miePratiche" class="list"></div>
+            </div>
+          </section>
+
+          <section class="rich-col">
+            <div class="surface-block">
+              <h3 class="section-title">3. Carica documenti</h3>
+              <form id="formDocUpload" class="inline-form">
+                <label>Pratica da aggiornare
+                  <select name="id" id="docPraticaSelect" required>
+                    <option value="" disabled selected>Prima crea o aggiorna una pratica</option>
+                  </select>
+                </label>
+                <label>Tipo documento
+                  <select name="tipo" required>
+                    <option value="" disabled selected>Seleziona documento</option>
+                    <option value="PASSAPORTO">Passaporto</option>
+                    <option value="FOTO">Foto</option>
+                    <option value="BIGLIETTO">Prenotazione viaggio</option>
+                    <option value="ASSICURAZIONE">Assicurazione</option>
+                    <option value="ALTRO">Altro</option>
+                  </select>
+                </label>
+                <label>File (immagine o PDF)
+                  <input name="file_upload" type="file" accept="image/*,application/pdf" required>
+                </label>
+                <input name="nome_file" type="hidden">
+                <input name="mime_type" type="hidden">
+                <input name="dimensione" type="hidden">
+                <button class="btn btn-ghost" type="submit">Aggiungi documento</button>
+              </form>
+            </div>
+
+            <div class="surface-block">
+              <h3 class="section-title">Storico pratiche</h3>
+              <p class="helper-text">Elenco pratiche create in passato o gia concluse, utile per consultazione rapida.</p>
+              <div id="storicoPratiche" class="list compact"></div>
+            </div>
+          </section>
         </div>
-        <div id="miePratiche" class="list"></div>
-
-        <h3 class="section-title">Storico pratiche</h3>
-        <p class="helper-text">Elenco pratiche create in passato o gia concluse, utile per consultazione rapida.</p>
-        <div id="storicoPratiche" class="list compact"></div>
-
-        <form id="formDocUpload" class="inline-form">
-          <label>Pratica da aggiornare
-            <select name="id" id="docPraticaSelect" required>
-              <option value="" disabled selected>Prima crea o aggiorna una pratica</option>
-            </select>
-          </label>
-          <label>Tipo documento
-            <select name="tipo" required>
-              <option value="" disabled selected>Seleziona documento</option>
-              <option value="PASSAPORTO">Passaporto</option>
-              <option value="FOTO">Foto</option>
-              <option value="BIGLIETTO">Prenotazione viaggio</option>
-              <option value="ASSICURAZIONE">Assicurazione</option>
-              <option value="ALTRO">Altro</option>
-            </select>
-          </label>
-          <label>File (immagine o PDF)
-            <input name="file_upload" type="file" accept="image/*,application/pdf" required>
-          </label>
-          <input name="nome_file" type="hidden">
-          <input name="mime_type" type="hidden">
-          <input name="dimensione" type="hidden">
-          <button class="btn btn-ghost" type="submit">Aggiungi documento</button>
-        </form>
       </article>
 
       <article class="panel" id="backoffice">
