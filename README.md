@@ -29,6 +29,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
 - `GET /api/bo/report.csv`
+- `GET /api/bo/notifications/stream`
 - `PATCH /api/bo/pratiche/{id}/stato`
 - `POST /api/bo/pratiche/{id}/link-pagamento`
 - `POST /api/bo/pratiche/{id}/invia-visto`
@@ -41,6 +42,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `sort_by`, `sort_order`
 - `/api/bo/pratiche`: `stato`, `priorita`, `tipo_visto`, `paese_dest`, `operatore_id`, `q`, `from`, `to`
 - `/api/bo/utenti`: `ruolo`, `q`
+- `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
 
 ## Run locale
 
@@ -87,6 +89,11 @@ S3_USE_SSL=true
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 SENDGRID_API_KEY=
+
+# Hardening auth (opzionali)
+AUTH_RATE_LIMIT_RPM=30
+AUTH_LOCK_MAX_ATTEMPTS=5
+AUTH_LOCK_WINDOW_MINUTES=15
 ```
 
 ## Note architetturali

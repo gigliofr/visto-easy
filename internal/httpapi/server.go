@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,13 +27,34 @@ import (
 )
 
 type Server struct {
-	store  store.DataStore
-	tokens *auth.TokenManager
+	store   store.DataStore
+	tokens  *auth.TokenManager
 	presign storagepkg.PresignService
+	authRL  *simpleRateLimiter
+	loginLT *loginLockTracker
 }
 
 func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.PresignService) *Server {
-	return &Server{store: st, tokens: tm, presign: presign}
+	limitPerMinute := envInt("AUTH_RATE_LIMIT_RPM", 30)
+	if limitPerMinute <= 0 {
+		limitPerMinute = 30
+	}
+	maxAttempts := envInt("AUTH_LOCK_MAX_ATTEMPTS", 5)
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	windowMinutes := envInt("AUTH_LOCK_WINDOW_MINUTES", 15)
+	if windowMinutes <= 0 {
+		windowMinutes = 15
+	}
+
+	return &Server{
+		store:   st,
+		tokens:  tm,
+		presign: presign,
+		authRL:  newSimpleRateLimiter(limitPerMinute, time.Minute),
+		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -43,12 +66,12 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/pagamento/webhook", s.handlePagamentoWebhook)
 
 	r.Route("/api/auth", func(r chi.Router) {
-		r.Post("/register", s.handleRegister)
-		r.Post("/login", s.handleLogin)
+		r.With(s.authRateLimitMiddleware()).Post("/register", s.handleRegister)
+		r.With(s.authRateLimitMiddleware()).Post("/login", s.handleLogin)
 		r.Post("/refresh", s.handleRefresh)
 		r.Post("/logout", s.handleLogout)
-		r.Post("/forgot-password", s.handleForgotPassword)
-		r.Post("/reset-password", s.handleResetPassword)
+		r.With(s.authRateLimitMiddleware()).Post("/forgot-password", s.handleForgotPassword)
+		r.With(s.authRateLimitMiddleware()).Post("/reset-password", s.handleResetPassword)
 	})
 
 	r.Group(func(r chi.Router) {
@@ -77,6 +100,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/utenti", s.handleBOListUtenti)
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/report.csv", s.handleBOReportCSV)
+			r.Get("/notifications/stream", s.handleBONotificationsStream)
 			r.Get("/pratiche/{id}", s.handleGetPratica)
 			r.Get("/pratiche/{id}/eventi", s.handleListEventiPratica)
 			r.Patch("/pratiche/{id}/stato", s.handleBOChangeStato)
@@ -131,11 +155,32 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct { Email, Password string }
 	if !decodeJSON(w, r, &req) { return }
-	u, err := s.store.GetUserByEmail(req.Email)
-	if err != nil || u.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" {
 		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
 		return
 	}
+	if locked, remaining := s.loginLT.IsLocked(email); locked {
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error":               "troppi tentativi di login, riprova più tardi",
+			"retry_after_seconds": int(remaining.Seconds()),
+		})
+		return
+	}
+
+	u, err := s.store.GetUserByEmail(email)
+	if err != nil || u.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+		if locked, remaining := s.loginLT.RecordFailure(email); locked {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "troppi tentativi di login, riprova più tardi",
+				"retry_after_seconds": int(remaining.Seconds()),
+			})
+			return
+		}
+		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
+		return
+	}
+	s.loginLT.Clear(email)
 	access, _ := s.tokens.SignAccess(u.ID, string(u.Ruolo))
 	refresh, _ := s.tokens.SignRefresh(u.ID, string(u.Ruolo))
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
@@ -401,15 +446,49 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
-	all := s.store.ListAllPratiche()
-	filtered := make([]map[string]any, 0, len(all))
+	filtered := s.filterPraticheBackoffice(r)
 	page, pageSize := parsePagination(r)
 	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
 	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
 	if sortOrder != "asc" {
 		sortOrder = "desc"
 	}
+	s.sortPratiche(filtered, sortBy, sortOrder)
 
+	usersByID := make(map[string]model.Utente)
+	for _, u := range s.store.ListUsers() {
+		usersByID[u.ID] = u
+	}
+
+	total := len(filtered)
+	start, end := paginateBounds(total, page, pageSize)
+	pagedPratiche := filtered[start:end]
+	paged := make([]map[string]any, 0, len(pagedPratiche))
+	for _, p := range pagedPratiche {
+		richiedente := usersByID[p.UtenteID]
+		paged = append(paged, map[string]any{
+			"pratica": p,
+			"richiedente": map[string]any{
+				"id":      richiedente.ID,
+				"email":   richiedente.Email,
+				"nome":    richiedente.Nome,
+				"cognome": richiedente.Cognome,
+			},
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+func (s *Server) filterPraticheBackoffice(r *http.Request) []model.Pratica {
+	all := s.store.ListAllPratiche()
+	filtered := make([]model.Pratica, 0, len(all))
 	stato := strings.TrimSpace(r.URL.Query().Get("stato"))
 	tipoVisto := strings.TrimSpace(r.URL.Query().Get("tipo_visto"))
 	paeseDest := strings.TrimSpace(r.URL.Query().Get("paese_dest"))
@@ -455,20 +534,16 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
-		filtered = append(filtered, map[string]any{
-			"pratica": p,
-			"richiedente": map[string]any{
-				"id":      richiedente.ID,
-				"email":   richiedente.Email,
-				"nome":    richiedente.Nome,
-				"cognome": richiedente.Cognome,
-			},
-		})
+		filtered = append(filtered, p)
 	}
 
-	sort.Slice(filtered, func(i, j int) bool {
-		pi := filtered[i]["pratica"].(model.Pratica)
-		pj := filtered[j]["pratica"].(model.Pratica)
+	return filtered
+}
+
+func (s *Server) sortPratiche(pratiche []model.Pratica, sortBy, sortOrder string) {
+	sort.Slice(pratiche, func(i, j int) bool {
+		pi := pratiche[i]
+		pj := pratiche[j]
 		less := false
 		switch sortBy {
 		case "codice":
@@ -486,18 +561,6 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 			return less
 		}
 		return !less
-	})
-
-	total := len(filtered)
-	start, end := paginateBounds(total, page, pageSize)
-	paged := filtered[start:end]
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"items":     paged,
-		"count":     len(paged),
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
 	})
 }
 
@@ -556,7 +619,14 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {
-	all := s.store.ListAllPratiche()
+	all := s.filterPraticheBackoffice(r)
+	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
+	sortOrder := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("sort_order")))
+	if sortOrder != "asc" {
+		sortOrder = "desc"
+	}
+	s.sortPratiche(all, sortBy, sortOrder)
+
 	w.Header().Set("Content-Type", "text/csv")
 	w.Header().Set("Content-Disposition", "attachment; filename=report_pratiche.csv")
 	cw := csv.NewWriter(w)
@@ -576,6 +646,90 @@ func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	cw.Flush()
+}
+
+func (s *Server) handleBONotificationsStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "stream non supportato")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	lastSignature := ""
+	sendSnapshot := func() {
+		snapshot := s.buildBONotificationSnapshot()
+		signature := fmt.Sprintf("%d|%d|%s", snapshot["totale_pratiche"], snapshot["in_coda"], snapshot["ultimo_aggiornamento"])
+		if signature == lastSignature {
+			return
+		}
+		lastSignature = signature
+		writeSSEEvent(w, "bo_snapshot", snapshot)
+		flusher.Flush()
+	}
+
+	writeSSEEvent(w, "ready", map[string]any{"status": "connected"})
+	sendSnapshot()
+	flusher.Flush()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			sendSnapshot()
+		}
+	}
+}
+
+func (s *Server) buildBONotificationSnapshot() map[string]any {
+	all := s.store.ListAllPratiche()
+	inCoda := 0
+	ultimo := time.Time{}
+	for _, p := range all {
+		if p.Stato != model.StatoCompletata {
+			inCoda++
+		}
+		if p.AggiornatoIl.After(ultimo) {
+			ultimo = p.AggiornatoIl
+		}
+	}
+	last := ""
+	if !ultimo.IsZero() {
+		last = ultimo.UTC().Format(time.RFC3339)
+	}
+	return map[string]any{
+		"totale_pratiche":      len(all),
+		"in_coda":              inCoda,
+		"ultimo_aggiornamento": last,
+		"emesso_oggi":          s.countPraticheInStateSince(all, model.StatoVistoEmesso, time.Now().Add(-24*time.Hour)),
+	}
+}
+
+func (s *Server) countPraticheInStateSince(items []model.Pratica, stato model.StatoPratica, since time.Time) int {
+	count := 0
+	for _, p := range items {
+		if p.Stato == stato && p.AggiornatoIl.After(since) {
+			count++
+		}
+	}
+	return count
+}
+
+func writeSSEEvent(w http.ResponseWriter, event string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "event: %s\n", event)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 }
 
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
@@ -706,6 +860,41 @@ func requestJSON(next http.Handler) http.Handler {
 	})
 }
 
+func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := clientIP(r)
+			if key == "" {
+				key = "unknown"
+			}
+			allowed, retryAfter := s.authRL.Allow(key)
+			if !allowed {
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{
+					"error":               "troppi tentativi, riprova più tardi",
+					"retry_after_seconds": int(retryAfter.Seconds()),
+				})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func clientIP(r *http.Request) string {
+	xForwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if xForwardedFor != "" {
+		parts := strings.Split(xForwardedFor, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	xRealIP := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	if xRealIP != "" {
+		return xRealIP
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
 func parseOptionalTime(raw string) time.Time {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -804,4 +993,126 @@ func paginateBounds(total, page, pageSize int) (int, int) {
 		end = total
 	}
 	return start, end
+}
+
+func envInt(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+type simpleRateLimiter struct {
+	mu        sync.Mutex
+	limit     int
+	window    time.Duration
+	bucketByK map[string]rateBucket
+}
+
+type rateBucket struct {
+	count   int
+	resetAt time.Time
+}
+
+func newSimpleRateLimiter(limit int, window time.Duration) *simpleRateLimiter {
+	return &simpleRateLimiter{
+		limit:     limit,
+		window:    window,
+		bucketByK: map[string]rateBucket{},
+	}
+}
+
+func (l *simpleRateLimiter) Allow(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := time.Now()
+	b := l.bucketByK[key]
+	if b.resetAt.IsZero() || now.After(b.resetAt) {
+		b = rateBucket{count: 0, resetAt: now.Add(l.window)}
+	}
+	if b.count >= l.limit {
+		retry := time.Until(b.resetAt)
+		if retry < 0 {
+			retry = 0
+		}
+		l.bucketByK[key] = b
+		return false, retry
+	}
+	b.count++
+	l.bucketByK[key] = b
+	return true, 0
+}
+
+type loginLockTracker struct {
+	mu          sync.Mutex
+	maxAttempts int
+	window      time.Duration
+	entries     map[string]loginAttempt
+}
+
+type loginAttempt struct {
+	count       int
+	windowStart time.Time
+	lockedUntil time.Time
+}
+
+func newLoginLockTracker(maxAttempts int, window time.Duration) *loginLockTracker {
+	return &loginLockTracker{
+		maxAttempts: maxAttempts,
+		window:      window,
+		entries:     map[string]loginAttempt{},
+	}
+}
+
+func (t *loginLockTracker) IsLocked(email string) (bool, time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	entry, ok := t.entries[email]
+	if !ok {
+		return false, 0
+	}
+	now := time.Now()
+	if now.Before(entry.lockedUntil) {
+		return true, time.Until(entry.lockedUntil)
+	}
+	if !entry.lockedUntil.IsZero() && now.After(entry.lockedUntil) {
+		delete(t.entries, email)
+	}
+	return false, 0
+}
+
+func (t *loginLockTracker) RecordFailure(email string) (bool, time.Duration) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	now := time.Now()
+	entry := t.entries[email]
+	if entry.windowStart.IsZero() || now.Sub(entry.windowStart) > t.window {
+		entry = loginAttempt{count: 0, windowStart: now}
+	}
+	if now.Before(entry.lockedUntil) {
+		return true, time.Until(entry.lockedUntil)
+	}
+	entry.count++
+	if entry.count >= t.maxAttempts {
+		entry.lockedUntil = now.Add(t.window)
+	}
+	t.entries[email] = entry
+	if now.Before(entry.lockedUntil) {
+		return true, time.Until(entry.lockedUntil)
+	}
+	return false, 0
+}
+
+func (t *loginLockTracker) Clear(email string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	delete(t.entries, email)
 }
