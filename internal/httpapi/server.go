@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -617,6 +618,11 @@ func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Re
 	if req.Provider == "" { req.Provider = "stripe" }
 	pay, err := s.store.CreatePayment(req.PraticaID, req.Provider, req.Importo)
 	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	pay, err = s.enrichPaymentCheckoutSession(pay)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
+		return
+	}
 	_, _ = s.store.ChangePraticaState(req.PraticaID, claimsFromCtx(r.Context()).UserID, model.StatoAttendePagamento, "link pagamento generato")
 	writeJSON(w, http.StatusCreated, pay)
 }
@@ -1600,6 +1606,11 @@ func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Requ
 	if req.Provider == "" { req.Provider = "stripe" }
 	pay, err := s.store.CreatePayment(chi.URLParam(r, "id"), req.Provider, req.Importo)
 	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	pay, err = s.enrichPaymentCheckoutSession(pay)
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
+		return
+	}
 	_, _ = s.store.ChangePraticaState(chi.URLParam(r, "id"), claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
 	writeJSON(w, http.StatusCreated, pay)
 }
@@ -1959,6 +1970,82 @@ func parseWebhookPaymentInfo(body []byte) (webhookPaymentInfo, error) {
 	}
 
 	return webhookPaymentInfo{Event: strings.ToLower(event), EventID: eventID, Token: token}, nil
+}
+
+func (s *Server) enrichPaymentCheckoutSession(pay model.Pagamento) (model.Pagamento, error) {
+	provider := strings.ToLower(strings.TrimSpace(pay.Provider))
+	if provider != "stripe" {
+		return pay, nil
+	}
+	secret := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+	if secret == "" {
+		return pay, nil
+	}
+
+	apiBase := strings.TrimSpace(os.Getenv("STRIPE_API_BASE"))
+	if apiBase == "" {
+		apiBase = "https://api.stripe.com"
+	}
+	successURL := strings.TrimSpace(os.Getenv("PAYMENT_SUCCESS_URL"))
+	if successURL == "" {
+		successURL = "https://example.com/conferma-pagamento"
+	}
+	cancelURL := strings.TrimSpace(os.Getenv("PAYMENT_CANCEL_URL"))
+	if cancelURL == "" {
+		cancelURL = "https://example.com/pagamento-annullato"
+	}
+	amountCents := int64(pay.Importo * 100)
+	if amountCents <= 0 {
+		amountCents = 100
+	}
+
+	form := url.Values{}
+	form.Set("mode", "payment")
+	form.Set("success_url", successURL)
+	form.Set("cancel_url", cancelURL)
+	form.Set("client_reference_id", pay.Token)
+	form.Set("metadata[token]", pay.Token)
+	form.Set("line_items[0][price_data][currency]", strings.ToLower(strings.TrimSpace(pay.Valuta)))
+	if strings.TrimSpace(pay.Valuta) == "" {
+		form.Set("line_items[0][price_data][currency]", "eur")
+	}
+	form.Set("line_items[0][price_data][unit_amount]", strconv.FormatInt(amountCents, 10))
+	form.Set("line_items[0][price_data][product_data][name]", "Visto Easy pratica "+pay.PraticaID)
+	form.Set("line_items[0][quantity]", "1")
+
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(apiBase, "/")+"/v1/checkout/sessions", strings.NewReader(form.Encode()))
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	req.SetBasicAuth(secret, "")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 12 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		body, _ := io.ReadAll(resp.Body)
+		return model.Pagamento{}, fmt.Errorf("stripe checkout create failed status=%d body=%s", resp.StatusCode, string(body))
+	}
+	var stripeResp struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&stripeResp); err != nil {
+		return model.Pagamento{}, err
+	}
+	if strings.TrimSpace(stripeResp.ID) == "" || strings.TrimSpace(stripeResp.URL) == "" {
+		return model.Pagamento{}, errors.New("stripe response missing id/url")
+	}
+
+	updated, err := s.store.UpdatePaymentCheckout(pay.ID, stripeResp.ID, stripeResp.URL)
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	return updated, nil
 }
 
 func webhookPayloadFingerprint(body []byte) string {

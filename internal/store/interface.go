@@ -23,6 +23,7 @@ type DataStore interface {
 	GetDocumento(praticaID, documentoID string) (model.Documento, error)
 	DeleteDocumento(praticaID, documentoID string) (bool, error)
 	CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error)
+	UpdatePaymentCheckout(paymentID, providerSessionID, linkPagamento string) (model.Pagamento, error)
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)
 	CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error)

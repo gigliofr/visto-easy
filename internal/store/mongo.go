@@ -585,6 +585,43 @@ func (s *MongoStore) CreatePayment(praticaID, provider string, amount float64) (
 	return pay, nil
 }
 
+func (s *MongoStore) UpdatePaymentCheckout(paymentID, providerSessionID, linkPagamento string) (model.Pagamento, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	paymentID = strings.TrimSpace(paymentID)
+	if paymentID == "" {
+		return model.Pagamento{}, ErrForbiddenState
+	}
+	set := bson.M{}
+	if strings.TrimSpace(providerSessionID) != "" {
+		set["providersessionid"] = strings.TrimSpace(providerSessionID)
+	}
+	if strings.TrimSpace(linkPagamento) != "" {
+		set["linkpagamento"] = strings.TrimSpace(linkPagamento)
+	}
+	if len(set) == 0 {
+		var unchanged model.Pagamento
+		err := s.pagamenti.FindOne(ctx, bson.M{"id": paymentID}).Decode(&unchanged)
+		if errorsIsNotFound(err) {
+			return model.Pagamento{}, ErrNotFound
+		}
+		return unchanged, err
+	}
+	res, err := s.pagamenti.UpdateOne(ctx, bson.M{"id": paymentID}, bson.M{"$set": set})
+	if err != nil {
+		return model.Pagamento{}, err
+	}
+	if res.MatchedCount == 0 {
+		return model.Pagamento{}, ErrNotFound
+	}
+	var updated model.Pagamento
+	err = s.pagamenti.FindOne(ctx, bson.M{"id": paymentID}).Decode(&updated)
+	if errorsIsNotFound(err) {
+		return model.Pagamento{}, ErrNotFound
+	}
+	return updated, err
+}
+
 func (s *MongoStore) GetPaymentByToken(token string) (model.Pagamento, error) {
 	ctx, cancel := s.ctx()
 	defer cancel()

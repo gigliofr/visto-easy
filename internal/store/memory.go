@@ -291,6 +291,24 @@ func (s *MemoryStore) CreatePayment(praticaID, provider string, amount float64) 
 	return pay, nil
 }
 
+func (s *MemoryStore) UpdatePaymentCheckout(paymentID, providerSessionID, linkPagamento string) (model.Pagamento, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	paymentID = strings.TrimSpace(paymentID)
+	pay, ok := s.payments[paymentID]
+	if !ok {
+		return model.Pagamento{}, ErrNotFound
+	}
+	if strings.TrimSpace(providerSessionID) != "" {
+		pay.ProviderSessionID = strings.TrimSpace(providerSessionID)
+	}
+	if strings.TrimSpace(linkPagamento) != "" {
+		pay.LinkPagamento = strings.TrimSpace(linkPagamento)
+	}
+	s.payments[paymentID] = pay
+	return pay, nil
+}
+
 func (s *MemoryStore) GetPaymentByToken(token string) (model.Pagamento, error) {
 	s.mu.RLock(); defer s.mu.RUnlock()
 	for _, p := range s.payments {

@@ -19,11 +19,12 @@ type fakePolicyStore struct {
 	pratiche       map[string]model.Pratica
 	refreshSessions map[string]model.RefreshSession
 	passwordResetTokens map[string]model.PasswordResetToken
+	payments       map[string]model.Pagamento
 	seq            int
 }
 
 func newPolicyTestServer() *Server {
-	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}, refreshSessions: map[string]model.RefreshSession{}, passwordResetTokens: map[string]model.PasswordResetToken{}}}
+	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}, refreshSessions: map[string]model.RefreshSession{}, passwordResetTokens: map[string]model.PasswordResetToken{}, payments: map[string]model.Pagamento{}}}
 }
 
 func (f *fakePolicyStore) nextID(prefix string) string {
@@ -189,12 +190,56 @@ func (f *fakePolicyStore) DeleteDocumento(praticaID, documentoID string) (bool, 
 	return false, nil
 }
 func (f *fakePolicyStore) CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error) {
-	return model.Pagamento{}, store.ErrNotFound
+	if f.payments == nil {
+		f.payments = map[string]model.Pagamento{}
+	}
+	if _, ok := f.pratiche[praticaID]; !ok {
+		return model.Pagamento{}, store.ErrNotFound
+	}
+	now := time.Now().UTC()
+	id := f.nextID("pay")
+	token := strings.ReplaceAll(f.nextID("tok"), "-", "")
+	p := model.Pagamento{
+		ID: id, PraticaID: praticaID, Provider: provider,
+		ProviderSessionID: "sess_" + id, Token: token,
+		Importo: amount, Valuta: "EUR", Stato: model.PagamentoPendente,
+		LinkPagamento: "/pagamento/" + token, Scadenza: now.Add(48 * time.Hour), CreatoIl: now,
+	}
+	f.payments[p.ID] = p
+	return p, nil
+}
+func (f *fakePolicyStore) UpdatePaymentCheckout(paymentID, providerSessionID, linkPagamento string) (model.Pagamento, error) {
+	p, ok := f.payments[strings.TrimSpace(paymentID)]
+	if !ok {
+		return model.Pagamento{}, store.ErrNotFound
+	}
+	if strings.TrimSpace(providerSessionID) != "" {
+		p.ProviderSessionID = strings.TrimSpace(providerSessionID)
+	}
+	if strings.TrimSpace(linkPagamento) != "" {
+		p.LinkPagamento = strings.TrimSpace(linkPagamento)
+	}
+	f.payments[p.ID] = p
+	return p, nil
 }
 func (f *fakePolicyStore) GetPaymentByToken(token string) (model.Pagamento, error) {
+	for _, p := range f.payments {
+		if p.Token == token {
+			return p, nil
+		}
+	}
 	return model.Pagamento{}, store.ErrNotFound
 }
 func (f *fakePolicyStore) ConfirmPaymentByToken(token string) (model.Pagamento, error) {
+	for id, p := range f.payments {
+		if p.Token == token {
+			now := time.Now().UTC()
+			p.Stato = model.PagamentoCompletato
+			p.PagatoIl = &now
+			f.payments[id] = p
+			return p, nil
+		}
+	}
 	return model.Pagamento{}, store.ErrNotFound
 }
 func (f *fakePolicyStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
