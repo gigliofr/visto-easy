@@ -69,6 +69,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(securityHeadersMiddleware)
 	r.Use(corsMiddleware)
 	r.Use(requestJSON)
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets"))))
 
 	r.Get("/", s.handleRoot)
 	r.Get("/api/v1/health", s.handleHealth)
@@ -155,8 +156,7 @@ func (s *Server) Router() http.Handler {
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Visto Easy</title><style>body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:linear-gradient(120deg,#f6f7fb,#eef4ff);color:#112;padding:48px}main{max-width:880px;margin:0 auto;background:#fff;border-radius:20px;padding:32px;box-shadow:0 10px 30px rgba(17,34,68,.08)}h1{margin:0 0 8px;font-size:40px}p{line-height:1.5;color:#445}a{display:inline-block;margin-right:12px;margin-top:16px;padding:10px 14px;border-radius:10px;text-decoration:none;border:1px solid #ccd}a.primary{background:#0f4fff;color:#fff;border-color:#0f4fff}</style></head><body><main><h1>Visto Easy</h1><p>Portale di gestione richieste visto. API operative su /api/*.</p><a class=\"primary\" href=\"/api/v1/health\">Health</a><a href=\"/api/pratiche\">API Pratiche</a></main></body></html>"))
+		http.ServeFile(w, r, "web/index.html")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})

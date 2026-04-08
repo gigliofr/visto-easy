@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visto Easy</title>
+  <meta name="description" content="Gestione richieste visto con workflow semplice, rapido e sicuro.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container nav">
+      <div class="brand">Visto Easy</div>
+      <nav>
+        <a href="#prodotto">Prodotto</a>
+        <a href="#vantaggi">Vantaggi</a>
+        <a href="#flusso">Flusso</a>
+      </nav>
+      <a class="btn btn-ghost" href="/api/v1/health">Status API</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero container" id="prodotto">
+      <p class="eyebrow">Nuova esperienza per le pratiche visto</p>
+      <h1>Un frontend pulito.<br>Un workflow senza attrito.</h1>
+      <p class="subtitle">Compila, invia e monitora le richieste con un'interfaccia essenziale, veloce e pensata per mobile e desktop.</p>
+      <div class="hero-cta">
+        <a class="btn btn-solid" href="/api/pratiche">Esplora API</a>
+        <a class="btn btn-ghost" href="#flusso">Vedi il flusso</a>
+      </div>
+      <div class="hero-shell">
+        <div class="screen">
+          <div class="screen-top">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="screen-content">
+            <div class="line w-40"></div>
+            <div class="line w-70"></div>
+            <div class="grid">
+              <article>
+                <h3>Creazione pratica</h3>
+                <p>Form guidato e campi essenziali.</p>
+              </article>
+              <article>
+                <h3>Documenti</h3>
+                <p>Upload con stato validazione.</p>
+              </article>
+              <article>
+                <h3>Pagamento</h3>
+                <p>Checkout e conferma webhook.</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel-wrap" id="vantaggi">
+      <div class="container cards">
+        <article class="card reveal">
+          <h2>Minimal design</h2>
+          <p>Tipografia forte, spazi ampi, gerarchie chiare. Tutto quello che serve, niente rumore.</p>
+        </article>
+        <article class="card reveal">
+          <h2>Responsive nativo</h2>
+          <p>Layout fluido ottimizzato per smartphone, tablet e desktop senza compromessi.</p>
+        </article>
+        <article class="card reveal">
+          <h2>Sicurezza integrata</h2>
+          <p>Autenticazione robusta, audit avanzato e workflow backoffice tracciabile.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="container flow" id="flusso">
+      <h2>Dal primo click alla pratica completata</h2>
+      <ol>
+        <li><strong>1.</strong> Registrazione e login</li>
+        <li><strong>2.</strong> Compilazione dati e upload documenti</li>
+        <li><strong>3.</strong> Revisione operatore e pagamento</li>
+        <li><strong>4.</strong> Emissione visto e chiusura pratica</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <p>Visto Easy</p>
+      <p><a href="/api/v1/health">API Health</a></p>
+    </div>
+  </footer>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
