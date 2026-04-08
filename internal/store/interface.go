@@ -4,6 +4,7 @@ import "visto-easy/internal/model"
 
 type DataStore interface {
 	CreateUser(u model.Utente) (model.Utente, error)
+	ListUsers() []model.Utente
 	GetUserByEmail(email string) (model.Utente, error)
 	GetUserByID(id string) (model.Utente, error)
 	CreatePratica(p model.Pratica, actorID string) (model.Pratica, error)

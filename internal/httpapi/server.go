@@ -71,6 +71,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
+			r.Get("/utenti", s.handleBOListUtenti)
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/pratiche/{id}", s.handleGetPratica)
 			r.Get("/pratiche/{id}/eventi", s.handleListEventiPratica)
@@ -397,7 +398,7 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 	all := s.store.ListAllPratiche()
-	filtered := make([]model.Pratica, 0, len(all))
+	filtered := make([]map[string]any, 0, len(all))
 
 	stato := strings.TrimSpace(r.URL.Query().Get("stato"))
 	tipoVisto := strings.TrimSpace(r.URL.Query().Get("tipo_visto"))
@@ -407,6 +408,10 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
 	fromTs := parseOptionalTime(r.URL.Query().Get("from"))
 	toTs := parseOptionalTime(r.URL.Query().Get("to"))
+	usersByID := make(map[string]model.Utente)
+	for _, u := range s.store.ListUsers() {
+		usersByID[u.ID] = u
+	}
 
 	for _, p := range all {
 		if stato != "" && string(p.Stato) != stato {
@@ -430,19 +435,50 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 		if !toTs.IsZero() && p.CreatoIl.After(toTs) {
 			continue
 		}
+		richiedente := usersByID[p.UtenteID]
 		if q != "" {
-			haystack := strings.ToLower(strings.Join([]string{p.Codice, p.TipoVisto, p.PaeseDest, p.UtenteID}, "|"))
+			haystack := strings.ToLower(strings.Join([]string{
+				p.Codice, p.TipoVisto, p.PaeseDest, p.UtenteID,
+				richiedente.Email, richiedente.Nome, richiedente.Cognome,
+			}, "|"))
 			if !strings.Contains(haystack, q) {
 				continue
 			}
 		}
-		filtered = append(filtered, p)
+		filtered = append(filtered, map[string]any{
+			"pratica": p,
+			"richiedente": map[string]any{
+				"id":      richiedente.ID,
+				"email":   richiedente.Email,
+				"nome":    richiedente.Nome,
+				"cognome": richiedente.Cognome,
+			},
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": filtered,
 		"count": len(filtered),
 	})
+}
+
+func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
+	rolo := strings.TrimSpace(r.URL.Query().Get("ruolo"))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	items := make([]model.Utente, 0)
+	for _, u := range s.store.ListUsers() {
+		if rolo != "" && string(u.Ruolo) != rolo {
+			continue
+		}
+		if q != "" {
+			h := strings.ToLower(strings.Join([]string{u.Email, u.Nome, u.Cognome, string(u.Ruolo)}, "|"))
+			if !strings.Contains(h, q) {
+				continue
+			}
+		}
+		items = append(items, u)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {

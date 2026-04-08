@@ -27,6 +27,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/pratiche/{id}/documenti`
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
+- `GET /api/bo/utenti`
 - `PATCH /api/bo/pratiche/{id}/stato`
 - `POST /api/bo/pratiche/{id}/link-pagamento`
 - `POST /api/bo/pratiche/{id}/invia-visto`

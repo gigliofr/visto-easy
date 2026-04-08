@@ -137,6 +137,24 @@ func (s *MongoStore) CreateUser(u model.Utente) (model.Utente, error) {
 	return u, nil
 }
 
+func (s *MongoStore) ListUsers() []model.Utente {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	cur, err := s.users.Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"creatoil": -1}))
+	if err != nil {
+		return []model.Utente{}
+	}
+	defer cur.Close(ctx)
+	var out []model.Utente
+	for cur.Next(ctx) {
+		var u model.Utente
+		if cur.Decode(&u) == nil {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
 func (s *MongoStore) GetUserByEmail(email string) (model.Utente, error) {
 	ctx, cancel := s.ctx()
 	defer cancel()
