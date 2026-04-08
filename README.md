@@ -137,6 +137,13 @@ Il frontend include:
 - UX robusta: toast feedback, loading state pulsanti, output debug strutturato
 - mini dashboard KPI backoffice (totali pratiche/utenti/audit)
 
+Struttura moduli frontend (`web/assets/js`):
+- `session.js`: stato sessione/token/ruoli
+- `ui.js`: rendering UI, toast, output, loading state
+- `http.js`: client API + parser form
+- `features.js`: wiring flussi auth/richiedente/backoffice
+- `app.js`: entrypoint minimale (bootstrap)
+
 ## Deploy (Coolify / Railway)
 
 - Docker multi-stage pronto in `Dockerfile`
