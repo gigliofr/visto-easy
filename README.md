@@ -30,6 +30,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
+- `GET /api/bo/security/blocked-ips`
+- `POST /api/bo/security/blocked-ips/block`
+- `POST /api/bo/security/blocked-ips/unblock`
 - `GET /api/bo/security-events`
 - `GET /api/bo/security-events/stats`
 - `GET /api/bo/security-events/stream`
@@ -58,6 +61,10 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `/api/bo/security-events/stats`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/security-events/report.csv`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
+
+Payload blocklist IP:
+- `POST /api/bo/security/blocked-ips/block`: `{ "ip": "1.2.3.4", "reason": "bruteforce", "ttl_minutes": 120 }`
+- `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }`
 
 ## Run locale
 
@@ -113,6 +120,7 @@ AUTH_LOCK_WINDOW_MINUTES=15
 # Security alerting (opzionali)
 SECURITY_ALERT_WINDOW_MINUTES=15
 SECURITY_ALERT_FAILED_THRESHOLD=5
+SECURITY_BLOCK_IP_DEFAULT_TTL_MINUTES=120
 ```
 
 ## Note architetturali
