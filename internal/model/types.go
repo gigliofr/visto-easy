@@ -122,3 +122,15 @@ type Pagamento struct {
 	PagatoIl          *time.Time     `json:"pagato_il,omitempty"`
 	CreatoIl          time.Time      `json:"creato_il"`
 }
+
+type SecurityEvent struct {
+	ID        string         `json:"id"`
+	Type      string         `json:"type"`
+	Outcome   string         `json:"outcome"`
+	Email     string         `json:"email,omitempty"`
+	UserID    string         `json:"user_id,omitempty"`
+	IP        string         `json:"ip,omitempty"`
+	UserAgent string         `json:"user_agent,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatoIl  time.Time      `json:"creato_il"`
+}

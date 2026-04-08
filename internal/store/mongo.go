@@ -22,6 +22,7 @@ type MongoStore struct {
 	pratiche   *mongo.Collection
 	pagamenti  *mongo.Collection
 	webhooks   *mongo.Collection
+	securityEvents *mongo.Collection
 	counters   *mongo.Collection
 }
 
@@ -45,6 +46,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		pratiche:  db.Collection("pratiche"),
 		pagamenti: db.Collection("pagamenti"),
 		webhooks:  db.Collection("webhook_events"),
+		securityEvents: db.Collection("security_events"),
 		counters:  db.Collection("counters"),
 	}
 	if err := s.ensureIndexes(context.Background()); err != nil {
@@ -90,6 +92,14 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("webhook_events index creation failed: %w", err)
+	}
+	_, err = s.securityEvents.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "creatoil", Value: -1}}},
+		{Keys: bson.D{{Key: "type", Value: 1}, {Key: "outcome", Value: 1}}},
+		{Keys: bson.D{{Key: "email", Value: 1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("security_events index creation failed: %w", err)
 	}
 	return nil
 }
@@ -544,6 +554,45 @@ func (s *MongoStore) MarkWebhookEventProcessed(provider, eventID, paymentID stri
 		return false, err
 	}
 	return false, nil
+}
+
+func (s *MongoStore) AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	if strings.TrimSpace(evt.Type) == "" {
+		return model.SecurityEvent{}, ErrForbiddenState
+	}
+	if strings.TrimSpace(evt.ID) == "" {
+		evt.ID = uuid.NewString()
+	}
+	if evt.CreatoIl.IsZero() {
+		evt.CreatoIl = time.Now().UTC()
+	}
+	if _, err := s.securityEvents.InsertOne(ctx, evt); err != nil {
+		return model.SecurityEvent{}, err
+	}
+	return evt, nil
+}
+
+func (s *MongoStore) ListSecurityEvents() []model.SecurityEvent {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	cur, err := s.securityEvents.Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"creatoil": -1}).SetLimit(1000))
+	if err != nil {
+		return []model.SecurityEvent{}
+	}
+	defer cur.Close(ctx)
+
+	out := make([]model.SecurityEvent, 0)
+	for cur.Next(ctx) {
+		var evt model.SecurityEvent
+		if cur.Decode(&evt) == nil {
+			out = append(out, evt)
+		}
+	}
+	return out
 }
 
 func errorsIsNotFound(err error) bool {

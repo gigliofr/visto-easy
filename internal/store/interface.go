@@ -24,4 +24,6 @@ type DataStore interface {
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)
 	MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error)
+	AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error)
+	ListSecurityEvents() []model.SecurityEvent
 }

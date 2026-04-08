@@ -27,6 +27,7 @@ type MemoryStore struct {
 	pratiche  map[string]model.Pratica
 	payments  map[string]model.Pagamento
 	webhooks  map[string]time.Time
+	securityEvents []model.SecurityEvent
 	byEmail   map[string]string
 	counters  map[string]*atomic.Uint64
 }
@@ -37,6 +38,7 @@ func NewMemoryStore() *MemoryStore {
 		pratiche: make(map[string]model.Pratica),
 		payments: make(map[string]model.Pagamento),
 		webhooks: make(map[string]time.Time),
+		securityEvents: make([]model.SecurityEvent, 0, 128),
 		byEmail:  make(map[string]string),
 		counters: map[string]*atomic.Uint64{"pratica": {}},
 	}
@@ -281,4 +283,29 @@ func (s *MemoryStore) MarkWebhookEventProcessed(provider, eventID, paymentID str
 	}
 	s.webhooks[key] = time.Now().UTC()
 	return false, nil
+}
+
+func (s *MemoryStore) AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(evt.Type) == "" {
+		return model.SecurityEvent{}, ErrForbiddenState
+	}
+	if strings.TrimSpace(evt.ID) == "" {
+		evt.ID = uuid.NewString()
+	}
+	if evt.CreatoIl.IsZero() {
+		evt.CreatoIl = time.Now().UTC()
+	}
+	s.securityEvents = append(s.securityEvents, evt)
+	return evt, nil
+}
+
+func (s *MemoryStore) ListSecurityEvents() []model.SecurityEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]model.SecurityEvent, len(s.securityEvents))
+	copy(out, s.securityEvents)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatoIl.After(out[j].CreatoIl) })
+	return out
 }

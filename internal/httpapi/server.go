@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"sort"
@@ -98,6 +99,7 @@ func (s *Server) Router() http.Handler {
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
+			r.Get("/security-events", s.handleBOSecurityEvents)
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/report.csv", s.handleBOReportCSV)
 			r.Get("/notifications/stream", s.handleBONotificationsStream)
@@ -156,11 +158,29 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct { Email, Password string }
 	if !decodeJSON(w, r, &req) { return }
 	email := strings.ToLower(strings.TrimSpace(req.Email))
+	ip := clientIP(r)
+	ua := strings.TrimSpace(r.UserAgent())
 	if email == "" {
+		s.recordSecurityEvent(model.SecurityEvent{
+			Type:      "LOGIN_FAILED",
+			Outcome:   "invalid_email",
+			IP:        ip,
+			UserAgent: ua,
+		})
 		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
 		return
 	}
 	if locked, remaining := s.loginLT.IsLocked(email); locked {
+		s.recordSecurityEvent(model.SecurityEvent{
+			Type:      "LOGIN_LOCKED",
+			Outcome:   "blocked",
+			Email:     email,
+			IP:        ip,
+			UserAgent: ua,
+			Metadata: map[string]any{
+				"retry_after_seconds": int(remaining.Seconds()),
+			},
+		})
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{
 			"error":               "troppi tentativi di login, riprova più tardi",
 			"retry_after_seconds": int(remaining.Seconds()),
@@ -171,16 +191,41 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	u, err := s.store.GetUserByEmail(email)
 	if err != nil || u.PasswordHash == "" || bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
 		if locked, remaining := s.loginLT.RecordFailure(email); locked {
+			s.recordSecurityEvent(model.SecurityEvent{
+				Type:      "LOGIN_LOCKED",
+				Outcome:   "threshold_reached",
+				Email:     email,
+				IP:        ip,
+				UserAgent: ua,
+				Metadata: map[string]any{
+					"retry_after_seconds": int(remaining.Seconds()),
+				},
+			})
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{
 				"error":               "troppi tentativi di login, riprova più tardi",
 				"retry_after_seconds": int(remaining.Seconds()),
 			})
 			return
 		}
+		s.recordSecurityEvent(model.SecurityEvent{
+			Type:      "LOGIN_FAILED",
+			Outcome:   "invalid_credentials",
+			Email:     email,
+			IP:        ip,
+			UserAgent: ua,
+		})
 		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
 		return
 	}
 	s.loginLT.Clear(email)
+	s.recordSecurityEvent(model.SecurityEvent{
+		Type:      "LOGIN_SUCCESS",
+		Outcome:   "ok",
+		Email:     email,
+		UserID:    u.ID,
+		IP:        ip,
+		UserAgent: ua,
+	})
 	access, _ := s.tokens.SignAccess(u.ID, string(u.Ruolo))
 	refresh, _ := s.tokens.SignRefresh(u.ID, string(u.Ruolo))
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
@@ -639,6 +684,52 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) {
+	page, pageSize := parsePagination(r)
+	eventType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
+	outcome := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("outcome")))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	fromTs := parseOptionalTime(r.URL.Query().Get("from"))
+	toTs := parseOptionalTime(r.URL.Query().Get("to"))
+
+	all := s.store.ListSecurityEvents()
+	filtered := make([]model.SecurityEvent, 0, len(all))
+	for _, evt := range all {
+		if eventType != "" && strings.ToLower(evt.Type) != eventType {
+			continue
+		}
+		if outcome != "" && strings.ToLower(evt.Outcome) != outcome {
+			continue
+		}
+		if !fromTs.IsZero() && evt.CreatoIl.Before(fromTs) {
+			continue
+		}
+		if !toTs.IsZero() && evt.CreatoIl.After(toTs) {
+			continue
+		}
+		if q != "" {
+			h := strings.ToLower(strings.Join([]string{evt.Email, evt.UserID, evt.IP, evt.UserAgent, evt.Type, evt.Outcome}, "|"))
+			if !strings.Contains(h, q) {
+				continue
+			}
+		}
+		filtered = append(filtered, evt)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].CreatoIl.After(filtered[j].CreatoIl) })
+	total := len(filtered)
+	start, end := paginateBounds(total, page, pageSize)
+	paged := filtered[start:end]
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
 func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {
 	all := s.filterPraticheBackoffice(r)
 	sortBy := strings.TrimSpace(r.URL.Query().Get("sort_by"))
@@ -890,6 +981,16 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 			}
 			allowed, retryAfter := s.authRL.Allow(key)
 			if !allowed {
+				s.recordSecurityEvent(model.SecurityEvent{
+					Type:      "AUTH_RATE_LIMIT_HIT",
+					Outcome:   "blocked",
+					IP:        key,
+					UserAgent: strings.TrimSpace(r.UserAgent()),
+					Metadata: map[string]any{
+						"path":                r.URL.Path,
+						"retry_after_seconds": int(retryAfter.Seconds()),
+					},
+				})
 				writeJSON(w, http.StatusTooManyRequests, map[string]any{
 					"error":               "troppi tentativi, riprova più tardi",
 					"retry_after_seconds": int(retryAfter.Seconds()),
@@ -913,7 +1014,16 @@ func clientIP(r *http.Request) string {
 	if xRealIP != "" {
 		return xRealIP
 	}
-	return strings.TrimSpace(r.RemoteAddr)
+	remote := strings.TrimSpace(r.RemoteAddr)
+	host, _, err := net.SplitHostPort(remote)
+	if err == nil && strings.TrimSpace(host) != "" {
+		return strings.TrimSpace(host)
+	}
+	return remote
+}
+
+func (s *Server) recordSecurityEvent(evt model.SecurityEvent) {
+	_, _ = s.store.AddSecurityEvent(evt)
 }
 
 func parseOptionalTime(raw string) time.Time {
