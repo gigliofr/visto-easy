@@ -2,8 +2,10 @@ package auth
 
 import (
 	"errors"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -40,11 +42,20 @@ func (m *TokenManager) SignAccess(userID, role string) (string, error) {
 }
 
 func (m *TokenManager) SignRefresh(userID, role string) (string, error) {
+	return m.SignRefreshWithJTI(userID, role, "")
+}
+
+func (m *TokenManager) SignRefreshWithJTI(userID, role, jti string) (string, error) {
+	jti = strings.TrimSpace(jti)
+	if jti == "" {
+		jti = uuid.NewString()
+	}
 	claims := Claims{
 		UserID: userID,
 		Role:   role,
 		Type:   "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},

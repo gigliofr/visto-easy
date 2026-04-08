@@ -27,6 +27,7 @@ type MemoryStore struct {
 	pratiche  map[string]model.Pratica
 	payments  map[string]model.Pagamento
 	webhooks  map[string]time.Time
+	refreshSessions map[string]model.RefreshSession
 	blockedIPs map[string]model.BlockedIP
 	allowedIPs map[string]model.AllowedIP
 	securityEvents []model.SecurityEvent
@@ -40,6 +41,7 @@ func NewMemoryStore() *MemoryStore {
 		pratiche: make(map[string]model.Pratica),
 		payments: make(map[string]model.Pagamento),
 		webhooks: make(map[string]time.Time),
+		refreshSessions: make(map[string]model.RefreshSession),
 		blockedIPs: make(map[string]model.BlockedIP),
 		allowedIPs: make(map[string]model.AllowedIP),
 		securityEvents: make([]model.SecurityEvent, 0, 128),
@@ -306,6 +308,57 @@ func (s *MemoryStore) ConfirmPaymentByToken(token string) (model.Pagamento, erro
 		return p, nil
 	}
 	return model.Pagamento{}, ErrNotFound
+}
+
+func (s *MemoryStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := strings.TrimSpace(session.ID)
+	if id == "" {
+		return model.RefreshSession{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	if session.CreatoIl.IsZero() {
+		session.CreatoIl = now
+	}
+	session.AggiornatoIl = now
+	s.refreshSessions[id] = session
+	return session, nil
+}
+
+func (s *MemoryStore) GetRefreshSessionByID(id string) (model.RefreshSession, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(id)
+	session, ok := s.refreshSessions[id]
+	if !ok {
+		return model.RefreshSession{}, ErrNotFound
+	}
+	if time.Now().UTC().After(session.ExpiresAt) {
+		delete(s.refreshSessions, id)
+		return model.RefreshSession{}, ErrNotFound
+	}
+	return session, nil
+}
+
+func (s *MemoryStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id = strings.TrimSpace(id)
+	session, ok := s.refreshSessions[id]
+	if !ok {
+		return false, nil
+	}
+	if session.Revoked {
+		return false, nil
+	}
+	now := time.Now().UTC()
+	session.Revoked = true
+	session.RevokedAt = &now
+	session.ReplacedBy = strings.TrimSpace(replacedBy)
+	session.AggiornatoIl = now
+	s.refreshSessions[id] = session
+	return true, nil
 }
 
 func (s *MemoryStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {

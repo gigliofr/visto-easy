@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"visto-easy/internal/auth"
@@ -242,7 +243,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		UserAgent: ua,
 	})
 	access, _ := s.tokens.SignAccess(u.ID, string(u.Ruolo))
-	refresh, _ := s.tokens.SignRefresh(u.ID, string(u.Ruolo))
+	refreshID := uuid.NewString()
+	refresh, _ := s.tokens.SignRefreshWithJTI(u.ID, string(u.Ruolo), refreshID)
+	_, _ = s.store.CreateRefreshSession(model.RefreshSession{
+		ID:         refreshID,
+		UserID:     u.ID,
+		Role:       string(u.Ruolo),
+		ExpiresAt:  time.Now().UTC().Add(7 * 24 * time.Hour),
+		Revoked:    false,
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
 }
 
@@ -254,12 +263,36 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
+	if strings.TrimSpace(c.ID) == "" {
+		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
+		return
+	}
+	session, err := s.store.GetRefreshSessionByID(c.ID)
+	if err != nil || session.Revoked || session.UserID != c.UserID || session.Role != c.Role {
+		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
+		return
+	}
 	access, _ := s.tokens.SignAccess(c.UserID, c.Role)
-	refresh, _ := s.tokens.SignRefresh(c.UserID, c.Role)
+	newRefreshID := uuid.NewString()
+	refresh, _ := s.tokens.SignRefreshWithJTI(c.UserID, c.Role, newRefreshID)
+	_, _ = s.store.CreateRefreshSession(model.RefreshSession{
+		ID:         newRefreshID,
+		UserID:     c.UserID,
+		Role:       c.Role,
+		ExpiresAt:  time.Now().UTC().Add(7 * 24 * time.Hour),
+		Revoked:    false,
+	})
+	_, _ = s.store.RevokeRefreshSession(c.ID, newRefreshID)
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh})
 }
 
-func (s *Server) handleLogout(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	var req struct { RefreshToken string `json:"refresh_token"` }
+	if decodeJSON(w, r, &req) && strings.TrimSpace(req.RefreshToken) != "" {
+		if c, err := s.tokens.Parse(req.RefreshToken); err == nil && c.Type == "refresh" && strings.TrimSpace(c.ID) != "" {
+			_, _ = s.store.RevokeRefreshSession(c.ID, "")
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
 }
 

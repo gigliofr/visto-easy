@@ -123,6 +123,18 @@ type Pagamento struct {
 	CreatoIl          time.Time      `json:"creato_il"`
 }
 
+type RefreshSession struct {
+	ID         string     `json:"id"`
+	UserID     string     `json:"user_id"`
+	Role       string     `json:"role"`
+	Revoked    bool       `json:"revoked"`
+	RevokedAt  *time.Time `json:"revoked_at,omitempty"`
+	ReplacedBy string     `json:"replaced_by,omitempty"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	CreatoIl   time.Time  `json:"creato_il"`
+	AggiornatoIl time.Time `json:"aggiornato_il"`
+}
+
 type SecurityEvent struct {
 	ID        string         `json:"id"`
 	Type      string         `json:"type"`

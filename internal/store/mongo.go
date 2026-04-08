@@ -21,6 +21,7 @@ type MongoStore struct {
 	users      *mongo.Collection
 	pratiche   *mongo.Collection
 	pagamenti  *mongo.Collection
+	refreshSessions *mongo.Collection
 	webhooks   *mongo.Collection
 	blockedIPs *mongo.Collection
 	allowedIPs *mongo.Collection
@@ -47,6 +48,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		users:     db.Collection("utenti"),
 		pratiche:  db.Collection("pratiche"),
 		pagamenti: db.Collection("pagamenti"),
+		refreshSessions: db.Collection("refresh_sessions"),
 		webhooks:  db.Collection("webhook_events"),
 		blockedIPs: db.Collection("blocked_ips"),
 		allowedIPs: db.Collection("allowed_ips"),
@@ -89,6 +91,15 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("pagamenti index creation failed: %w", err)
+	}
+	_, err = s.refreshSessions.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "id", Value: 1}}, Options: options.Index().SetUnique(true)},
+		{Keys: bson.D{{Key: "userid", Value: 1}}},
+		{Keys: bson.D{{Key: "revoked", Value: 1}}},
+		{Keys: bson.D{{Key: "expiresat", Value: 1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("refresh_sessions index creation failed: %w", err)
 	}
 	_, err = s.webhooks.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "provider", Value: 1}, {Key: "eventid", Value: 1}}, Options: options.Index().SetUnique(true)},
@@ -586,6 +597,61 @@ func (s *MongoStore) ConfirmPaymentByToken(token string) (model.Pagamento, error
 		return model.Pagamento{}, ErrNotFound
 	}
 	return s.GetPaymentByToken(token)
+}
+
+func (s *MongoStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	id := strings.TrimSpace(session.ID)
+	if id == "" {
+		return model.RefreshSession{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	session.ID = id
+	if session.CreatoIl.IsZero() {
+		session.CreatoIl = now
+	}
+	session.AggiornatoIl = now
+	_, err := s.refreshSessions.UpdateOne(ctx, bson.M{"id": id}, bson.M{"$set": session}, options.Update().SetUpsert(true))
+	if err != nil {
+		return model.RefreshSession{}, err
+	}
+	return session, nil
+}
+
+func (s *MongoStore) GetRefreshSessionByID(id string) (model.RefreshSession, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	id = strings.TrimSpace(id)
+	var session model.RefreshSession
+	err := s.refreshSessions.FindOne(ctx, bson.M{"id": id}).Decode(&session)
+	if errorsIsNotFound(err) {
+		return model.RefreshSession{}, ErrNotFound
+	}
+	if err != nil {
+		return model.RefreshSession{}, err
+	}
+	if time.Now().UTC().After(session.ExpiresAt) {
+		_, _ = s.refreshSessions.DeleteOne(ctx, bson.M{"id": id})
+		return model.RefreshSession{}, ErrNotFound
+	}
+	return session, nil
+}
+
+func (s *MongoStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	id = strings.TrimSpace(id)
+	now := time.Now().UTC()
+	res, err := s.refreshSessions.UpdateOne(
+		ctx,
+		bson.M{"id": id, "revoked": bson.M{"$ne": true}},
+		bson.M{"$set": bson.M{"revoked": true, "revokedat": now, "replacedby": strings.TrimSpace(replacedBy), "aggiornatoil": now}},
+	)
+	if err != nil {
+		return false, err
+	}
+	return res.ModifiedCount > 0, nil
 }
 
 func (s *MongoStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {

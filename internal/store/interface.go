@@ -25,6 +25,9 @@ type DataStore interface {
 	CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error)
 	GetPaymentByToken(token string) (model.Pagamento, error)
 	ConfirmPaymentByToken(token string) (model.Pagamento, error)
+	CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error)
+	GetRefreshSessionByID(id string) (model.RefreshSession, error)
+	RevokeRefreshSession(id, replacedBy string) (bool, error)
 	MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error)
 	AddSecurityEvent(evt model.SecurityEvent) (model.SecurityEvent, error)
 	ListSecurityEvents() []model.SecurityEvent

@@ -17,11 +17,12 @@ type fakePolicyStore struct {
 	users          map[string]model.Utente
 	usersByEmail   map[string]string
 	pratiche       map[string]model.Pratica
+	refreshSessions map[string]model.RefreshSession
 	seq            int
 }
 
 func newPolicyTestServer() *Server {
-	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}}}
+	return &Server{store: &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}, refreshSessions: map[string]model.RefreshSession{}}}
 }
 
 func (f *fakePolicyStore) nextID(prefix string) string {
@@ -194,6 +195,45 @@ func (f *fakePolicyStore) GetPaymentByToken(token string) (model.Pagamento, erro
 }
 func (f *fakePolicyStore) ConfirmPaymentByToken(token string) (model.Pagamento, error) {
 	return model.Pagamento{}, store.ErrNotFound
+}
+func (f *fakePolicyStore) CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error) {
+	if f.refreshSessions == nil {
+		f.refreshSessions = map[string]model.RefreshSession{}
+	}
+	if strings.TrimSpace(session.ID) == "" {
+		return model.RefreshSession{}, store.ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	if session.CreatoIl.IsZero() {
+		session.CreatoIl = now
+	}
+	session.AggiornatoIl = now
+	f.refreshSessions[session.ID] = session
+	return session, nil
+}
+func (f *fakePolicyStore) GetRefreshSessionByID(id string) (model.RefreshSession, error) {
+	session, ok := f.refreshSessions[strings.TrimSpace(id)]
+	if !ok {
+		return model.RefreshSession{}, store.ErrNotFound
+	}
+	if time.Now().UTC().After(session.ExpiresAt) {
+		delete(f.refreshSessions, strings.TrimSpace(id))
+		return model.RefreshSession{}, store.ErrNotFound
+	}
+	return session, nil
+}
+func (f *fakePolicyStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
+	session, ok := f.refreshSessions[strings.TrimSpace(id)]
+	if !ok || session.Revoked {
+		return false, nil
+	}
+	now := time.Now().UTC()
+	session.Revoked = true
+	session.RevokedAt = &now
+	session.ReplacedBy = strings.TrimSpace(replacedBy)
+	session.AggiornatoIl = now
+	f.refreshSessions[strings.TrimSpace(id)] = session
+	return true, nil
 }
 func (f *fakePolicyStore) MarkWebhookEventProcessed(provider, eventID, paymentID string) (bool, error) {
 	return false, nil
