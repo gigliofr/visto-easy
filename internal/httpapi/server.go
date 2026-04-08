@@ -35,6 +35,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/login", s.handleLogin)
 		r.Post("/refresh", s.handleRefresh)
 		r.Post("/logout", s.handleLogout)
+		r.Post("/forgot-password", s.handleForgotPassword)
+		r.Post("/reset-password", s.handleResetPassword)
 	})
 
 	r.Group(func(r chi.Router) {
@@ -45,6 +47,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/{id}", s.handleGetPratica)
 			r.Patch("/{id}", s.handlePatchPratica)
 			r.Delete("/{id}", s.handleDeletePratica)
+			r.Post("/{id}/submit", s.handleSubmitPratica)
 			r.Post("/{id}/documenti", s.handleAddDocumento)
 			r.Get("/{id}/documenti", s.handleListDocumenti)
 		})
@@ -61,8 +64,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/pratiche/{id}", s.handleGetPratica)
 			r.Patch("/pratiche/{id}/stato", s.handleBOChangeStato)
+			r.Post("/pratiche/{id}/note", s.handleBOAddNota)
 			r.Post("/pratiche/{id}/assegna", s.handleBOAssegna)
 			r.Post("/pratiche/{id}/link-pagamento", s.handleBOCreateLinkPagamento)
+			r.Post("/pratiche/{id}/richiedi-doc", s.handleBORichiediDoc)
 			r.Post("/pratiche/{id}/invia-visto", s.handleBOInviaVisto)
 			r.Get("/dashboard/stats", s.handleBOStats)
 		})
@@ -71,7 +76,13 @@ func (s *Server) Router() http.Handler {
 	return r
 }
 
-func (s *Server) handleRoot(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html") {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Visto Easy</title><style>body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:linear-gradient(120deg,#f6f7fb,#eef4ff);color:#112;padding:48px}main{max-width:880px;margin:0 auto;background:#fff;border-radius:20px;padding:32px;box-shadow:0 10px 30px rgba(17,34,68,.08)}h1{margin:0 0 8px;font-size:40px}p{line-height:1.5;color:#445}a{display:inline-block;margin-right:12px;margin-top:16px;padding:10px 14px;border-radius:10px;text-decoration:none;border:1px solid #ccd}a.primary{background:#0f4fff;color:#fff;border-color:#0f4fff}</style></head><body><main><h1>Visto Easy</h1><p>Portale di gestione richieste visto. API operative su /api/*.</p><a class=\"primary\" href=\"/api/v1/health\">Health</a><a href=\"/api/pratiche\">API Pratiche</a></main></body></html>"))
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})
 }
 
@@ -129,6 +140,25 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
+}
+
+func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct { Email string `json:"email"` }
+	if !decodeJSON(w, r, &req) { return }
+	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "message": "se l'email esiste riceverai istruzioni"})
+}
+
+func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	if !decodeJSON(w, r, &req) { return }
+	if len(strings.TrimSpace(req.NewPassword)) < 8 {
+		writeErr(w, http.StatusBadRequest, "password troppo corta")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
 }
 
 func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +225,24 @@ func (s *Server) handleDeletePratica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSubmitPratica(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil || claims.Role != string(model.RoleRichiedente) {
+		writeErr(w, http.StatusForbidden, "solo richiedente")
+		return
+	}
+	p, err := s.store.SubmitPratica(chi.URLParam(r, "id"), claims.UserID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
+		writeErr(w, http.StatusForbidden, "submit non consentito")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
@@ -275,7 +323,57 @@ func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusAccepted, map[string]any{"status": "assegnazione registrata"})
+	claims := claimsFromCtx(r.Context())
+	var req struct { OperatoreID string `json:"operatore_id"` }
+	if !decodeJSON(w, r, &req) { return }
+	p, err := s.store.AssignOperatore(chi.URLParam(r, "id"), strings.TrimSpace(req.OperatoreID), claims.UserID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica o operatore non trovato")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, "assegnazione non valida")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleBOAddNota(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		Messaggio string `json:"messaggio"`
+		Interna   bool   `json:"interna"`
+	}
+	if !decodeJSON(w, r, &req) { return }
+	p, err := s.store.AddNota(chi.URLParam(r, "id"), claims.UserID, req.Messaggio, req.Interna)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, "nota non valida")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		Documento string `json:"documento"`
+		Nota      string `json:"nota"`
+	}
+	if !decodeJSON(w, r, &req) { return }
+	p, err := s.store.RequestDocumento(chi.URLParam(r, "id"), claims.UserID, req.Documento, req.Nota)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
+		writeErr(w, http.StatusBadRequest, "richiesta documento non valida")
+		return
+	}
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Request) {

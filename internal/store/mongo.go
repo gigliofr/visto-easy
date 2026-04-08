@@ -280,6 +280,17 @@ func (s *MongoStore) DeletePraticaAsDraft(id, userID string) error {
 	return nil
 }
 
+func (s *MongoStore) SubmitPratica(id, userID string) (model.Pratica, error) {
+	p, err := s.GetPratica(id)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	if p.UtenteID != userID || p.Stato != model.StatoBozza {
+		return model.Pratica{}, ErrForbiddenState
+	}
+	return s.ChangePraticaState(id, userID, model.StatoInviata, "pratica inviata dal richiedente")
+}
+
 func (s *MongoStore) ChangePraticaState(id string, fromActor string, next model.StatoPratica, note string) (model.Pratica, error) {
 	p, err := s.GetPratica(id)
 	if err != nil {
@@ -303,6 +314,103 @@ func (s *MongoStore) ChangePraticaState(id string, fromActor string, next model.
 		return model.Pratica{}, err
 	}
 	return p, nil
+}
+
+func (s *MongoStore) AssignOperatore(praticaID, operatoreID, actorID string) (model.Pratica, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	if _, err := s.GetUserByID(operatoreID); err != nil {
+		return model.Pratica{}, ErrNotFound
+	}
+	now := time.Now().UTC()
+	p.OperatoreID = operatoreID
+	p.AggiornatoIl = now
+	p.Eventi = append(p.Eventi, model.EventoPratica{
+		ID:         uuid.NewString(),
+		PraticaID:  p.ID,
+		AttoreID:   actorID,
+		TipoEvento: "ASSEGNAZIONE_OPERATORE",
+		Messaggio:  "operatore assegnato",
+		Metadata: map[string]any{
+			"operatore_id": operatoreID,
+		},
+		CreatoIl: now,
+	})
+
+	ctx, cancel := s.ctx()
+	defer cancel()
+	_, err = s.pratiche.ReplaceOne(ctx, bson.M{"id": praticaID}, p)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	return p, nil
+}
+
+func (s *MongoStore) AddNota(praticaID, actorID, message string, internal bool) (model.Pratica, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	now := time.Now().UTC()
+	nota := strings.TrimSpace(message)
+	if nota == "" {
+		return model.Pratica{}, ErrForbiddenState
+	}
+	if internal {
+		if p.NoteInterne != "" {
+			p.NoteInterne += "\n"
+		}
+		p.NoteInterne += now.Format(time.RFC3339) + " | " + nota
+	} else {
+		if p.NoteRichiedente != "" {
+			p.NoteRichiedente += "\n"
+		}
+		p.NoteRichiedente += now.Format(time.RFC3339) + " | " + nota
+	}
+	p.AggiornatoIl = now
+	p.Eventi = append(p.Eventi, model.EventoPratica{
+		ID:         uuid.NewString(),
+		PraticaID:  p.ID,
+		AttoreID:   actorID,
+		TipoEvento: "NOTA_AGGIUNTA",
+		Messaggio:  nota,
+		Metadata: map[string]any{
+			"scope": map[bool]string{true: "interna", false: "richiedente"}[internal],
+		},
+		CreatoIl: now,
+	})
+
+	ctx, cancel := s.ctx()
+	defer cancel()
+	_, err = s.pratiche.ReplaceOne(ctx, bson.M{"id": praticaID}, p)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	return p, nil
+}
+
+func (s *MongoStore) RequestDocumento(praticaID, actorID, documento, note string) (model.Pratica, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	if p.Stato != model.StatoInLavorazione && p.Stato != model.StatoSospesa {
+		return model.Pratica{}, ErrInvalidState
+	}
+	p, err = s.ChangePraticaState(praticaID, actorID, model.StatoIntegrazioneRichiesta, "richiesta integrazione documentale")
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	msg := strings.TrimSpace(documento)
+	if strings.TrimSpace(note) != "" {
+		msg += " - " + strings.TrimSpace(note)
+	}
+	if msg == "" {
+		msg = "documento aggiuntivo richiesto"
+	}
+	return s.AddNota(praticaID, actorID, msg, false)
 }
 
 func (s *MongoStore) AddDocumento(praticaID string, d model.Documento) (model.Documento, error) {

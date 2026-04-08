@@ -12,7 +12,11 @@ type DataStore interface {
 	GetPratica(id string) (model.Pratica, error)
 	UpdatePraticaAsDraft(id, userID string, data map[string]any) (model.Pratica, error)
 	DeletePraticaAsDraft(id, userID string) error
+	SubmitPratica(id, userID string) (model.Pratica, error)
 	ChangePraticaState(id string, fromActor string, next model.StatoPratica, note string) (model.Pratica, error)
+	AssignOperatore(praticaID, operatoreID, actorID string) (model.Pratica, error)
+	AddNota(praticaID, actorID, message string, internal bool) (model.Pratica, error)
+	RequestDocumento(praticaID, actorID, documento, note string) (model.Pratica, error)
 	AddDocumento(praticaID string, d model.Documento) (model.Documento, error)
 	ListDocumenti(praticaID string) ([]model.Documento, error)
 	CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error)
