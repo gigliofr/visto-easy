@@ -44,3 +44,35 @@ func TestAssetsAreServed(t *testing.T) {
 		t.Fatalf("expected app.js content")
 	}
 }
+
+func TestIndexHTMLRouteServed(t *testing.T) {
+	s, _, _ := newSecurityHTTPTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/index.html", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status for /index.html: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Frontend completo") {
+		t.Fatalf("expected frontend html body")
+	}
+}
+
+func TestNonAPINotFoundFallsBackToFrontend(t *testing.T) {
+	s, _, _ := newSecurityHTTPTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/app/dashboard", nil)
+	req.Header.Set("Accept", "text/html")
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status for frontend fallback: got=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "id=\"appOutput\"") {
+		t.Fatalf("expected SPA shell for fallback route")
+	}
+}

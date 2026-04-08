@@ -74,6 +74,11 @@ func (s *Server) Router() http.Handler {
 	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(resolveWebPath(filepath.Join("assets"))))))
 
 	r.Get("/", s.handleRoot)
+	r.Get("/index.html", func(w http.ResponseWriter, r *http.Request) {
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = "/"
+		s.handleRoot(w, r2)
+	})
 	r.Get("/api/v1/health", s.handleHealth)
 	r.Post("/api/pagamento/webhook", s.handlePagamentoWebhook)
 
@@ -150,6 +155,15 @@ func (s *Server) Router() http.Handler {
 			r.Post("/pratiche/{id}/invia-visto", s.handleBOInviaVisto)
 			r.Get("/dashboard/stats", s.handleBOStats)
 		})
+	})
+
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimSpace(r.URL.Path)
+		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/assets/") {
+			writeErr(w, http.StatusNotFound, "endpoint non trovato")
+			return
+		}
+		s.handleRoot(w, r)
 	})
 
 	return r
