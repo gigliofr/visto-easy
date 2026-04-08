@@ -100,6 +100,8 @@ func (s *Server) Router() http.Handler {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
 			r.Get("/security-events", s.handleBOSecurityEvents)
+			r.Get("/security-events/stats", s.handleBOSecurityEventsStats)
+			r.Get("/security-events/stream", s.handleBOSecurityAlertsStream)
 			r.Get("/security-events/report.csv", s.handleBOSecurityEventsCSV)
 			r.Get("/security-events/{id}", s.handleBOGetSecurityEvent)
 			r.Get("/pratiche", s.handleBOListPratiche)
@@ -702,6 +704,54 @@ func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Request) {
+	items := s.filterSecurityEvents(r)
+	windowMinutes := envInt("SECURITY_ALERT_WINDOW_MINUTES", 15)
+	if windowMinutes <= 0 {
+		windowMinutes = 15
+	}
+	windowStart := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
+
+	byType := map[string]int{}
+	byOutcome := map[string]int{}
+	recentFailedByIP := map[string]int{}
+	recentFailedByEmail := map[string]int{}
+	recentFailed := 0
+	recentLocked := 0
+
+	for _, evt := range items {
+		byType[evt.Type]++
+		byOutcome[evt.Outcome]++
+		if evt.CreatoIl.Before(windowStart) {
+			continue
+		}
+		if evt.Type == "LOGIN_FAILED" {
+			recentFailed++
+			if strings.TrimSpace(evt.IP) != "" {
+				recentFailedByIP[evt.IP]++
+			}
+			if strings.TrimSpace(evt.Email) != "" {
+				recentFailedByEmail[evt.Email]++
+			}
+		}
+		if evt.Type == "LOGIN_LOCKED" {
+			recentLocked++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":                 len(items),
+		"window_minutes":        windowMinutes,
+		"recent_failed_logins":  recentFailed,
+		"recent_locked_logins":  recentLocked,
+		"by_type":               byType,
+		"by_outcome":            byOutcome,
+		"top_failed_ips":        topMapEntries(recentFailedByIP, 5),
+		"top_failed_emails":     topMapEntries(recentFailedByEmail, 5),
+		"high_risk_detected":    recentFailed >= envInt("SECURITY_ALERT_FAILED_THRESHOLD", 5) || recentLocked > 0,
+	})
+}
+
 func (s *Server) handleBOGetSecurityEvent(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
@@ -737,6 +787,88 @@ func (s *Server) handleBOSecurityEventsCSV(w http.ResponseWriter, r *http.Reques
 	cw.Flush()
 }
 
+func (s *Server) handleBOSecurityAlertsStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErr(w, http.StatusInternalServerError, "stream non supportato")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	lastSignature := ""
+	sendSnapshot := func() {
+		snapshot := s.buildSecurityAlertSnapshot()
+		signature := fmt.Sprintf("%s|%d|%d", snapshot["severity"], snapshot["recent_failed_logins"], snapshot["recent_locked_logins"])
+		if signature == lastSignature {
+			return
+		}
+		lastSignature = signature
+		writeSSEEvent(w, "security_alert", snapshot)
+		flusher.Flush()
+	}
+
+	writeSSEEvent(w, "ready", map[string]any{"status": "connected"})
+	sendSnapshot()
+	flusher.Flush()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			sendSnapshot()
+		}
+	}
+}
+
+func (s *Server) buildSecurityAlertSnapshot() map[string]any {
+	windowMinutes := envInt("SECURITY_ALERT_WINDOW_MINUTES", 15)
+	if windowMinutes <= 0 {
+		windowMinutes = 15
+	}
+	failedThreshold := envInt("SECURITY_ALERT_FAILED_THRESHOLD", 5)
+	if failedThreshold <= 0 {
+		failedThreshold = 5
+	}
+	windowStart := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
+
+	recentFailed := 0
+	recentLocked := 0
+	for _, evt := range s.store.ListSecurityEvents() {
+		if evt.CreatoIl.Before(windowStart) {
+			continue
+		}
+		if evt.Type == "LOGIN_FAILED" {
+			recentFailed++
+		}
+		if evt.Type == "LOGIN_LOCKED" {
+			recentLocked++
+		}
+	}
+
+	severity := "ok"
+	if recentLocked > 0 {
+		severity = "critical"
+	} else if recentFailed >= failedThreshold {
+		severity = "warning"
+	}
+
+	return map[string]any{
+		"severity":             severity,
+		"window_minutes":       windowMinutes,
+		"failed_threshold":     failedThreshold,
+		"recent_failed_logins": recentFailed,
+		"recent_locked_logins": recentLocked,
+		"generated_at":         time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
 func (s *Server) filterSecurityEvents(r *http.Request) []model.SecurityEvent {
 	eventType := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("type")))
 	outcome := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("outcome")))
@@ -770,6 +902,31 @@ func (s *Server) filterSecurityEvents(r *http.Request) []model.SecurityEvent {
 
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].CreatoIl.After(filtered[j].CreatoIl) })
 	return filtered
+}
+
+func topMapEntries(items map[string]int, limit int) []map[string]any {
+	type pair struct {
+		Key   string
+		Count int
+	}
+	pairs := make([]pair, 0, len(items))
+	for k, v := range items {
+		pairs = append(pairs, pair{Key: k, Count: v})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].Count == pairs[j].Count {
+			return pairs[i].Key < pairs[j].Key
+		}
+		return pairs[i].Count > pairs[j].Count
+	})
+	if limit > 0 && len(pairs) > limit {
+		pairs = pairs[:limit]
+	}
+	out := make([]map[string]any, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, map[string]any{"key": p.Key, "count": p.Count})
+	}
+	return out
 }
 
 func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {

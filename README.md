@@ -31,6 +31,8 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
 - `GET /api/bo/security-events`
+- `GET /api/bo/security-events/stats`
+- `GET /api/bo/security-events/stream`
 - `GET /api/bo/security-events/{id}`
 - `GET /api/bo/security-events/report.csv`
 - `GET /api/bo/report.csv`
@@ -53,6 +55,7 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `/api/bo/pratiche`: `stato`, `priorita`, `tipo_visto`, `paese_dest`, `operatore_id`, `q`, `from`, `to`
 - `/api/bo/utenti`: `ruolo`, `q`
 - `/api/bo/security-events`: `type`, `outcome`, `q`, `from`, `to`, `page`, `page_size`
+- `/api/bo/security-events/stats`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/security-events/report.csv`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
 
@@ -106,6 +109,10 @@ SENDGRID_API_KEY=
 AUTH_RATE_LIMIT_RPM=30
 AUTH_LOCK_MAX_ATTEMPTS=5
 AUTH_LOCK_WINDOW_MINUTES=15
+
+# Security alerting (opzionali)
+SECURITY_ALERT_WINDOW_MINUTES=15
+SECURITY_ALERT_FAILED_THRESHOLD=5
 ```
 
 ## Note architetturali
