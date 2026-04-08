@@ -732,6 +732,27 @@ func (s *MongoStore) GetRefreshSessionByID(id string) (model.RefreshSession, err
 	return session, nil
 }
 
+func (s *MongoStore) ListRefreshSessionsByUser(userID string) []model.RefreshSession {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	userID = strings.TrimSpace(userID)
+	now := time.Now().UTC()
+	_, _ = s.refreshSessions.DeleteMany(ctx, bson.M{"expiresat": bson.M{"$lte": now}})
+	cur, err := s.refreshSessions.Find(ctx, bson.M{"userid": userID, "expiresat": bson.M{"$gt": now}}, options.Find().SetSort(bson.M{"creatoil": -1}))
+	if err != nil {
+		return []model.RefreshSession{}
+	}
+	defer cur.Close(ctx)
+	out := make([]model.RefreshSession, 0)
+	for cur.Next(ctx) {
+		var session model.RefreshSession
+		if cur.Decode(&session) == nil {
+			out = append(out, session)
+		}
+	}
+	return out
+}
+
 func (s *MongoStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
 	ctx, cancel := s.ctx()
 	defer cancel()
@@ -746,6 +767,22 @@ func (s *MongoStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
 		return false, err
 	}
 	return res.ModifiedCount > 0, nil
+}
+
+func (s *MongoStore) RevokeAllRefreshSessionsByUser(userID string) (int, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	userID = strings.TrimSpace(userID)
+	now := time.Now().UTC()
+	res, err := s.refreshSessions.UpdateMany(
+		ctx,
+		bson.M{"userid": userID, "revoked": bson.M{"$ne": true}, "expiresat": bson.M{"$gt": now}},
+		bson.M{"$set": bson.M{"revoked": true, "revokedat": now, "replacedby": "admin_bulk_revoke", "aggiornatoil": now}},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return int(res.ModifiedCount), nil
 }
 
 func (s *MongoStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {

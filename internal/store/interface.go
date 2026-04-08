@@ -31,7 +31,9 @@ type DataStore interface {
 	RefundPaymentByToken(token string) (model.Pagamento, error)
 	CreateRefreshSession(session model.RefreshSession) (model.RefreshSession, error)
 	GetRefreshSessionByID(id string) (model.RefreshSession, error)
+	ListRefreshSessionsByUser(userID string) []model.RefreshSession
 	RevokeRefreshSession(id, replacedBy string) (bool, error)
+	RevokeAllRefreshSessionsByUser(userID string) (int, error)
 	CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error)
 	ConsumePasswordResetToken(token string) (model.PasswordResetToken, error)
 	UpdateUserPassword(userID, passwordHash string) (bool, error)

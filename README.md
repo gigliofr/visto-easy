@@ -37,6 +37,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
+- `GET /api/bo/utenti/{id}/sessioni`
+- `POST /api/bo/utenti/{id}/sessioni/revoca-all`
+- `POST /api/bo/sessioni/{id}/revoca`
 - `POST /api/bo/pagamenti/{token}/rimborso`
 - `GET /api/bo/security/allowed-ips`
 - `POST /api/bo/security/allowed-ips/allow`

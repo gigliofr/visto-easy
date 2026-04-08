@@ -302,6 +302,20 @@ func (f *fakePolicyStore) GetRefreshSessionByID(id string) (model.RefreshSession
 	}
 	return session, nil
 }
+func (f *fakePolicyStore) ListRefreshSessionsByUser(userID string) []model.RefreshSession {
+	now := time.Now().UTC()
+	items := make([]model.RefreshSession, 0)
+	for id, session := range f.refreshSessions {
+		if now.After(session.ExpiresAt) {
+			delete(f.refreshSessions, id)
+			continue
+		}
+		if session.UserID == strings.TrimSpace(userID) {
+			items = append(items, session)
+		}
+	}
+	return items
+}
 func (f *fakePolicyStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
 	session, ok := f.refreshSessions[strings.TrimSpace(id)]
 	if !ok || session.Revoked {
@@ -314,6 +328,29 @@ func (f *fakePolicyStore) RevokeRefreshSession(id, replacedBy string) (bool, err
 	session.AggiornatoIl = now
 	f.refreshSessions[strings.TrimSpace(id)] = session
 	return true, nil
+}
+func (f *fakePolicyStore) RevokeAllRefreshSessionsByUser(userID string) (int, error) {
+	now := time.Now().UTC()
+	revoked := 0
+	for id, session := range f.refreshSessions {
+		if session.UserID != strings.TrimSpace(userID) {
+			continue
+		}
+		if now.After(session.ExpiresAt) {
+			delete(f.refreshSessions, id)
+			continue
+		}
+		if session.Revoked {
+			continue
+		}
+		session.Revoked = true
+		session.RevokedAt = &now
+		session.ReplacedBy = "admin_bulk_revoke"
+		session.AggiornatoIl = now
+		f.refreshSessions[id] = session
+		revoked++
+	}
+	return revoked, nil
 }
 func (f *fakePolicyStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {
 	if f.passwordResetTokens == nil {

@@ -405,6 +405,25 @@ func (s *MemoryStore) GetRefreshSessionByID(id string) (model.RefreshSession, er
 	return session, nil
 }
 
+func (s *MemoryStore) ListRefreshSessionsByUser(userID string) []model.RefreshSession {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	userID = strings.TrimSpace(userID)
+	out := make([]model.RefreshSession, 0)
+	for id, session := range s.refreshSessions {
+		if now.After(session.ExpiresAt) {
+			delete(s.refreshSessions, id)
+			continue
+		}
+		if session.UserID == userID {
+			out = append(out, session)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatoIl.After(out[j].CreatoIl) })
+	return out
+}
+
 func (s *MemoryStore) RevokeRefreshSession(id, replacedBy string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -423,6 +442,33 @@ func (s *MemoryStore) RevokeRefreshSession(id, replacedBy string) (bool, error) 
 	session.AggiornatoIl = now
 	s.refreshSessions[id] = session
 	return true, nil
+}
+
+func (s *MemoryStore) RevokeAllRefreshSessionsByUser(userID string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userID = strings.TrimSpace(userID)
+	now := time.Now().UTC()
+	revoked := 0
+	for id, session := range s.refreshSessions {
+		if session.UserID != userID {
+			continue
+		}
+		if now.After(session.ExpiresAt) {
+			delete(s.refreshSessions, id)
+			continue
+		}
+		if session.Revoked {
+			continue
+		}
+		session.Revoked = true
+		session.RevokedAt = &now
+		session.ReplacedBy = "admin_bulk_revoke"
+		session.AggiornatoIl = now
+		s.refreshSessions[id] = session
+		revoked++
+	}
+	return revoked, nil
 }
 
 func (s *MemoryStore) CreatePasswordResetToken(token model.PasswordResetToken) (model.PasswordResetToken, error) {

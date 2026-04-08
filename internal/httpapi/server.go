@@ -111,6 +111,9 @@ func (s *Server) Router() http.Handler {
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
+			r.Get("/utenti/{id}/sessioni", s.handleBOListUserSessions)
+			r.Post("/utenti/{id}/sessioni/revoca-all", s.handleBORevokeUserSessions)
+			r.Post("/sessioni/{id}/revoca", s.handleBORevokeSession)
 			r.Post("/pagamenti/{token}/rimborso", s.handleBORefundPagamento)
 			r.Get("/security/allowed-ips", s.handleBOListAllowedIPs)
 			r.Post("/security/allowed-ips/allow", s.handleBOAllowIP)
@@ -1000,6 +1003,73 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+func (s *Server) handleBOListUserSessions(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil || claims.Role != string(model.RoleAdmin) {
+		writeErr(w, http.StatusForbidden, "solo admin")
+		return
+	}
+	userID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if userID == "" {
+		writeErr(w, http.StatusBadRequest, "utente non valido")
+		return
+	}
+	if _, err := s.store.GetUserByID(userID); err != nil {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	items := s.store.ListRefreshSessionsByUser(userID)
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+}
+
+func (s *Server) handleBORevokeUserSessions(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil || claims.Role != string(model.RoleAdmin) {
+		writeErr(w, http.StatusForbidden, "solo admin")
+		return
+	}
+	userID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if userID == "" {
+		writeErr(w, http.StatusBadRequest, "utente non valido")
+		return
+	}
+	if _, err := s.store.GetUserByID(userID); err != nil {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	revoked, err := s.store.RevokeAllRefreshSessionsByUser(userID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore revoca sessioni")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSIONS_REVOKED", Outcome: "bulk", UserID: claims.UserID, Metadata: map[string]any{"target_user_id": userID, "revoked": revoked}})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "user_id": userID, "revoked": revoked})
+}
+
+func (s *Server) handleBORevokeSession(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil || claims.Role != string(model.RoleAdmin) {
+		writeErr(w, http.StatusForbidden, "solo admin")
+		return
+	}
+	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
+	if sessionID == "" {
+		writeErr(w, http.StatusBadRequest, "sessione non valida")
+		return
+	}
+	ok, err := s.store.RevokeRefreshSession(sessionID, "admin_manual_revoke")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore revoca sessione")
+		return
+	}
+	if !ok {
+		writeErr(w, http.StatusNotFound, "sessione non trovata o già revocata")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSION_REVOKED", Outcome: "single", UserID: claims.UserID, Metadata: map[string]any{"session_id": sessionID}})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "session_id": sessionID})
 }
 
 func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) {
