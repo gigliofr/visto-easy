@@ -773,9 +773,9 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ip, err := normalizeIPAddress(req.IP)
+	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "ip non valido")
+		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
 	reason := strings.TrimSpace(req.Reason)
@@ -788,7 +788,7 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	entry := model.BlockedIP{
-		IP:        ip,
+		IP:        target,
 		Reason:    reason,
 		BlockedBy: claims.UserID,
 		BlockedAt: now,
@@ -806,7 +806,7 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 		Type:    "IP_BLOCKED",
 		Outcome: "manual",
 		UserID:  claims.UserID,
-		IP:      ip,
+		IP:      target,
 		Metadata: map[string]any{
 			"reason":      reason,
 			"ttl_minutes": ttlMinutes,
@@ -823,12 +823,12 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	ip, err := normalizeIPAddress(req.IP)
+	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "ip non valido")
+		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
-	removed, err := s.store.RemoveBlockedIP(ip)
+	removed, err := s.store.RemoveBlockedIP(target)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "errore aggiornamento denylist")
 		return
@@ -841,9 +841,9 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 		Type:    "IP_UNBLOCKED",
 		Outcome: "manual",
 		UserID:  claims.UserID,
-		IP:      ip,
+		IP:      target,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "unblocked", "ip": ip})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "unblocked", "ip": target})
 }
 
 func (s *Server) handleBOGetSecurityEvent(w http.ResponseWriter, r *http.Request) {
@@ -1272,7 +1272,7 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 			if key == "" {
 				key = "unknown"
 			}
-			if entry, err := s.store.GetBlockedIP(key); err == nil {
+			if blocked, entry := s.isClientBlockedIP(key); blocked {
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:      "IP_BLOCKED_REQUEST",
 					Outcome:   "blocked",
@@ -1281,6 +1281,8 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 					Metadata: map[string]any{
 						"path":       r.URL.Path,
 						"reason":     entry.Reason,
+						"blocked_by": entry.BlockedBy,
+						"block_rule": entry.IP,
 						"expires_at": formatOptTime(entry.ExpiresAt),
 					},
 				})
@@ -1343,6 +1345,50 @@ func normalizeIPAddress(raw string) (string, error) {
 		return "", errors.New("invalid ip")
 	}
 	return ip.String(), nil
+}
+
+func normalizeBlockTarget(raw string) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", errors.New("empty target")
+	}
+	if host, _, err := net.SplitHostPort(v); err == nil && strings.TrimSpace(host) != "" {
+		v = strings.TrimSpace(host)
+	}
+	if ip := net.ParseIP(v); ip != nil {
+		return ip.String(), nil
+	}
+	if _, network, err := net.ParseCIDR(v); err == nil {
+		return network.String(), nil
+	}
+	return "", errors.New("invalid target")
+}
+
+func ipMatchesBlockedTarget(clientIP net.IP, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" || clientIP == nil {
+		return false
+	}
+	if ip := net.ParseIP(target); ip != nil {
+		return clientIP.Equal(ip)
+	}
+	if _, network, err := net.ParseCIDR(target); err == nil {
+		return network.Contains(clientIP)
+	}
+	return false
+}
+
+func (s *Server) isClientBlockedIP(clientIPRaw string) (bool, model.BlockedIP) {
+	clientIP := net.ParseIP(strings.TrimSpace(clientIPRaw))
+	if clientIP == nil {
+		return false, model.BlockedIP{}
+	}
+	for _, entry := range s.store.ListBlockedIPs() {
+		if ipMatchesBlockedTarget(clientIP, entry.IP) {
+			return true, entry
+		}
+	}
+	return false, model.BlockedIP{}
 }
 
 func (s *Server) recordSecurityEvent(evt model.SecurityEvent) {

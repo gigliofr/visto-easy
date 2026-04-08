@@ -65,7 +65,8 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 
 Payload blocklist IP:
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "1.2.3.4", "reason": "bruteforce", "ttl_minutes": 120 }`
-- `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }`
+- `POST /api/bo/security/blocked-ips/block`: `{ "ip": "203.0.113.0/24", "reason": "abuse subnet", "ttl_minutes": 180 }`
+- `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }` oppure `{ "ip": "203.0.113.0/24" }`
 
 ## Run locale
 
