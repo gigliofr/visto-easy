@@ -14,6 +14,7 @@ type fakePolicyStore struct {
 	allowed        []model.AllowedIP
 	blocked        []model.BlockedIP
 	securityEvents []model.SecurityEvent
+	auditEvents    []model.AuditEvent
 	users          map[string]model.Utente
 	usersByEmail   map[string]string
 	pratiche       map[string]model.Pratica
@@ -409,6 +410,32 @@ func (f *fakePolicyStore) ListSecurityEvents() []model.SecurityEvent {
 }
 func (f *fakePolicyStore) GetSecurityEventByID(id string) (model.SecurityEvent, error) {
 	return model.SecurityEvent{}, store.ErrNotFound
+}
+func (f *fakePolicyStore) AddAuditEvent(evt model.AuditEvent) (model.AuditEvent, error) {
+	if strings.TrimSpace(evt.Action) == "" || strings.TrimSpace(evt.Resource) == "" {
+		return model.AuditEvent{}, store.ErrForbiddenState
+	}
+	if strings.TrimSpace(evt.ID) == "" {
+		evt.ID = f.nextID("audit")
+	}
+	if evt.CreatoIl.IsZero() {
+		evt.CreatoIl = time.Now().UTC()
+	}
+	f.auditEvents = append(f.auditEvents, evt)
+	return evt, nil
+}
+func (f *fakePolicyStore) ListAuditEvents() []model.AuditEvent {
+	out := make([]model.AuditEvent, len(f.auditEvents))
+	copy(out, f.auditEvents)
+	return out
+}
+func (f *fakePolicyStore) GetAuditEventByID(id string) (model.AuditEvent, error) {
+	for _, evt := range f.auditEvents {
+		if evt.ID == strings.TrimSpace(id) {
+			return evt, nil
+		}
+	}
+	return model.AuditEvent{}, store.ErrNotFound
 }
 func (f *fakePolicyStore) UpsertBlockedIP(entry model.BlockedIP) (model.BlockedIP, error) {
 	for i := range f.blocked {

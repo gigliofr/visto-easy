@@ -32,6 +32,7 @@ type MemoryStore struct {
 	blockedIPs map[string]model.BlockedIP
 	allowedIPs map[string]model.AllowedIP
 	securityEvents []model.SecurityEvent
+	auditEvents []model.AuditEvent
 	byEmail   map[string]string
 	counters  map[string]*atomic.Uint64
 }
@@ -47,6 +48,7 @@ func NewMemoryStore() *MemoryStore {
 		blockedIPs: make(map[string]model.BlockedIP),
 		allowedIPs: make(map[string]model.AllowedIP),
 		securityEvents: make([]model.SecurityEvent, 0, 128),
+		auditEvents: make([]model.AuditEvent, 0, 256),
 		byEmail:  make(map[string]string),
 		counters: map[string]*atomic.Uint64{"pratica": {}},
 	}
@@ -573,6 +575,42 @@ func (s *MemoryStore) GetSecurityEventByID(id string) (model.SecurityEvent, erro
 		}
 	}
 	return model.SecurityEvent{}, ErrNotFound
+}
+
+func (s *MemoryStore) AddAuditEvent(evt model.AuditEvent) (model.AuditEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if strings.TrimSpace(evt.Action) == "" || strings.TrimSpace(evt.Resource) == "" {
+		return model.AuditEvent{}, ErrForbiddenState
+	}
+	if strings.TrimSpace(evt.ID) == "" {
+		evt.ID = uuid.NewString()
+	}
+	if evt.CreatoIl.IsZero() {
+		evt.CreatoIl = time.Now().UTC()
+	}
+	s.auditEvents = append(s.auditEvents, evt)
+	return evt, nil
+}
+
+func (s *MemoryStore) ListAuditEvents() []model.AuditEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]model.AuditEvent, len(s.auditEvents))
+	copy(out, s.auditEvents)
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatoIl.After(out[j].CreatoIl) })
+	return out
+}
+
+func (s *MemoryStore) GetAuditEventByID(id string) (model.AuditEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, evt := range s.auditEvents {
+		if evt.ID == id {
+			return evt, nil
+		}
+	}
+	return model.AuditEvent{}, ErrNotFound
 }
 
 func (s *MemoryStore) UpsertBlockedIP(entry model.BlockedIP) (model.BlockedIP, error) {

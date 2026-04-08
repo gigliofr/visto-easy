@@ -131,6 +131,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/security-events/stream", s.handleBOSecurityAlertsStream)
 			r.Get("/security-events/report.csv", s.handleBOSecurityEventsCSV)
 			r.Get("/security-events/{id}", s.handleBOGetSecurityEvent)
+			r.Get("/audit-events", s.handleBOAuditEvents)
+			r.Get("/audit-events/report.csv", s.handleBOAuditEventsCSV)
+			r.Get("/audit-events/{id}", s.handleBOGetAuditEvent)
 			r.Get("/pratiche", s.handleBOListPratiche)
 			r.Get("/report.csv", s.handleBOReportCSV)
 			r.Get("/notifications/stream", s.handleBONotificationsStream)
@@ -1047,6 +1050,7 @@ func (s *Server) handleBORevokeUserSessions(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSIONS_REVOKED", Outcome: "bulk", UserID: claims.UserID, Metadata: map[string]any{"target_user_id": userID, "revoked": revoked}})
+	s.recordAuditEvent(r, claims, "ADMIN_REVOKE_USER_SESSIONS", "refresh_session", userID, map[string]any{"revoked": revoked})
 	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "user_id": userID, "revoked": revoked})
 }
 
@@ -1071,6 +1075,7 @@ func (s *Server) handleBORevokeSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSION_REVOKED", Outcome: "single", UserID: claims.UserID, Metadata: map[string]any{"session_id": sessionID}})
+	s.recordAuditEvent(r, claims, "ADMIN_REVOKE_SESSION", "refresh_session", sessionID, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "session_id": sessionID})
 }
 
@@ -1088,6 +1093,57 @@ func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) 
 		"page":      page,
 		"page_size": pageSize,
 	})
+}
+
+func (s *Server) handleBOAuditEvents(w http.ResponseWriter, r *http.Request) {
+	page, pageSize := parsePagination(r)
+	filtered := s.filterAuditEvents(r)
+	total := len(filtered)
+	start, end := paginateBounds(total, page, pageSize)
+	paged := filtered[start:end]
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items":     paged,
+		"count":     len(paged),
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+func (s *Server) handleBOGetAuditEvent(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(chi.URLParam(r, "id"))
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "id evento non valido")
+		return
+	}
+	evt, err := s.store.GetAuditEventByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "evento audit non trovato")
+		return
+	}
+	writeJSON(w, http.StatusOK, evt)
+}
+
+func (s *Server) handleBOAuditEventsCSV(w http.ResponseWriter, r *http.Request) {
+	items := s.filterAuditEvents(r)
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=audit_events.csv")
+	cw := csv.NewWriter(w)
+	_ = cw.Write([]string{"id", "actor_id", "actor_role", "action", "resource", "resource_id", "ip", "creato_il"})
+	for _, evt := range items {
+		_ = cw.Write([]string{
+			evt.ID,
+			evt.ActorID,
+			evt.ActorRole,
+			evt.Action,
+			evt.Resource,
+			evt.ResourceID,
+			evt.IP,
+			evt.CreatoIl.Format(time.RFC3339),
+		})
+	}
+	cw.Flush()
 }
 
 func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Request) {
@@ -1606,6 +1662,45 @@ func (s *Server) filterSecurityEvents(r *http.Request) []model.SecurityEvent {
 	return filtered
 }
 
+func (s *Server) filterAuditEvents(r *http.Request) []model.AuditEvent {
+	action := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("action")))
+	resource := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("resource")))
+	actorID := strings.TrimSpace(r.URL.Query().Get("actor_id"))
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	fromTs := parseOptionalTime(r.URL.Query().Get("from"))
+	toTs := parseOptionalTime(r.URL.Query().Get("to"))
+
+	all := s.store.ListAuditEvents()
+	filtered := make([]model.AuditEvent, 0, len(all))
+	for _, evt := range all {
+		if action != "" && strings.ToLower(evt.Action) != action {
+			continue
+		}
+		if resource != "" && strings.ToLower(evt.Resource) != resource {
+			continue
+		}
+		if actorID != "" && evt.ActorID != actorID {
+			continue
+		}
+		if !fromTs.IsZero() && evt.CreatoIl.Before(fromTs) {
+			continue
+		}
+		if !toTs.IsZero() && evt.CreatoIl.After(toTs) {
+			continue
+		}
+		if q != "" {
+			h := strings.ToLower(strings.Join([]string{evt.Action, evt.Resource, evt.ResourceID, evt.ActorID, evt.ActorRole, evt.IP}, "|"))
+			if !strings.Contains(h, q) {
+				continue
+			}
+		}
+		filtered = append(filtered, evt)
+	}
+
+	sort.Slice(filtered, func(i, j int) bool { return filtered[i].CreatoIl.After(filtered[j].CreatoIl) })
+	return filtered
+}
+
 func topMapEntries(items map[string]int, limit int) []map[string]any {
 	type pair struct {
 		Key   string
@@ -1790,12 +1885,14 @@ func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	var req struct { Stato model.StatoPratica `json:"stato"`; Nota string `json:"nota"` }
 	if !decodeJSON(w, r, &req) { return }
-	p, err := s.store.ChangePraticaState(chi.URLParam(r, "id"), claims.UserID, req.Stato, req.Nota)
+	praticaID := chi.URLParam(r, "id")
+	p, err := s.store.ChangePraticaState(praticaID, claims.UserID, req.Stato, req.Nota)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
 		writeErr(w, http.StatusBadRequest, "transizione non valida")
 		return
 	}
+	s.recordAuditEvent(r, claims, "PRATICA_CHANGE_STATE", "pratica", praticaID, map[string]any{"new_state": req.Stato, "note": req.Nota})
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -1803,7 +1900,9 @@ func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	var req struct { OperatoreID string `json:"operatore_id"` }
 	if !decodeJSON(w, r, &req) { return }
-	p, err := s.store.AssignOperatore(chi.URLParam(r, "id"), strings.TrimSpace(req.OperatoreID), claims.UserID)
+	praticaID := chi.URLParam(r, "id")
+	operatorID := strings.TrimSpace(req.OperatoreID)
+	p, err := s.store.AssignOperatore(praticaID, operatorID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "pratica o operatore non trovato")
@@ -1812,6 +1911,7 @@ func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "assegnazione non valida")
 		return
 	}
+	s.recordAuditEvent(r, claims, "PRATICA_ASSIGN_OPERATOR", "pratica", praticaID, map[string]any{"operatore_id": operatorID})
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -1831,6 +1931,7 @@ func (s *Server) handleBOAddNota(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "nota non valida")
 		return
 	}
+	s.recordAuditEvent(r, claims, "PRATICA_ADD_NOTE", "pratica", chi.URLParam(r, "id"), map[string]any{"interna": req.Interna})
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -1850,6 +1951,7 @@ func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "richiesta documento non valida")
 		return
 	}
+	s.recordAuditEvent(r, claims, "PRATICA_REQUEST_DOCUMENT", "pratica", chi.URLParam(r, "id"), map[string]any{"documento": req.Documento})
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -1858,15 +1960,17 @@ func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Requ
 	var req struct { Importo float64 `json:"importo"`; Provider string `json:"provider"` }
 	if !decodeJSON(w, r, &req) { return }
 	if req.Provider == "" { req.Provider = "stripe" }
-	pay, err := s.store.CreatePayment(chi.URLParam(r, "id"), req.Provider, req.Importo)
+	praticaID := chi.URLParam(r, "id")
+	pay, err := s.store.CreatePayment(praticaID, req.Provider, req.Importo)
 	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
 	pay, err = s.enrichPaymentCheckoutSession(pay)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
 		return
 	}
-	_, _ = s.store.ChangePraticaState(chi.URLParam(r, "id"), claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
+	_, _ = s.store.ChangePraticaState(praticaID, claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
 	s.notifyPaymentLink(pay)
+	s.recordAuditEvent(r, claims, "PRATICA_CREATE_PAYMENT_LINK", "pratica", praticaID, map[string]any{"payment_token": pay.Token, "provider": pay.Provider, "amount": pay.Importo})
 	writeJSON(w, http.StatusCreated, pay)
 }
 
@@ -1905,6 +2009,7 @@ func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request)
 	if req.Amount > 0 && req.Amount < pay.Importo {
 		outcome = "partial"
 	}
+	reason := strings.TrimSpace(req.Reason)
 	s.recordSecurityEvent(model.SecurityEvent{
 		Type:    "PAYMENT_REFUNDED",
 		Outcome: outcome,
@@ -1913,10 +2018,11 @@ func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request)
 			"payment_token": token,
 			"pratica_id":    pay.PraticaID,
 			"provider":      pay.Provider,
-			"reason":        strings.TrimSpace(req.Reason),
+			"reason":        reason,
 			"amount":        req.Amount,
 		},
 	})
+	s.recordAuditEvent(r, claims, "PAYMENT_REFUND", "payment", token, map[string]any{"pratica_id": pay.PraticaID, "provider": pay.Provider, "amount": req.Amount, "reason": reason, "outcome": outcome})
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "refunded", "payment": pay})
 }
@@ -1934,6 +2040,7 @@ func (s *Server) handleBOInviaVisto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = s.store.ChangePraticaState(id, claims.UserID, model.StatoCompletata, "pratica completata")
+	s.recordAuditEvent(r, claims, "PRATICA_SEND_VISTO", "pratica", id, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "visto inviato"})
 }
 
@@ -2216,6 +2323,21 @@ func optBlockedPtr(ok bool, value model.BlockedIP) *model.BlockedIP {
 
 func (s *Server) recordSecurityEvent(evt model.SecurityEvent) {
 	_, _ = s.store.AddSecurityEvent(evt)
+}
+
+func (s *Server) recordAuditEvent(r *http.Request, claims *auth.Claims, action, resource, resourceID string, details map[string]any) {
+	if claims == nil {
+		return
+	}
+	_, _ = s.store.AddAuditEvent(model.AuditEvent{
+		ActorID:    claims.UserID,
+		ActorRole:  claims.Role,
+		Action:     strings.TrimSpace(action),
+		Resource:   strings.TrimSpace(resource),
+		ResourceID: strings.TrimSpace(resourceID),
+		IP:         clientIP(r),
+		Details:    details,
+	})
 }
 
 func parseOptionalTime(raw string) time.Time {

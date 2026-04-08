@@ -55,6 +55,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/bo/security-events/stream`
 - `GET /api/bo/security-events/{id}`
 - `GET /api/bo/security-events/report.csv`
+- `GET /api/bo/audit-events`
+- `GET /api/bo/audit-events/{id}`
+- `GET /api/bo/audit-events/report.csv`
 - `GET /api/bo/report.csv`
 - `GET /api/bo/notifications/stream`
 - `PATCH /api/bo/pratiche/{id}/stato`
@@ -83,6 +86,8 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `/api/bo/security-events`: `type`, `outcome`, `q`, `from`, `to`, `page`, `page_size`
 - `/api/bo/security-events/stats`: stessi filtri di `/api/bo/security-events`
 - `/api/bo/security-events/report.csv`: stessi filtri di `/api/bo/security-events`
+- `/api/bo/audit-events`: `action`, `resource`, `actor_id`, `q`, `from`, `to`, `page`, `page_size`
+- `/api/bo/audit-events/report.csv`: stessi filtri di `/api/bo/audit-events`
 - `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
 
 Payload blocklist IP:

@@ -159,6 +159,18 @@ type SecurityEvent struct {
 	CreatoIl  time.Time      `json:"creato_il"`
 }
 
+type AuditEvent struct {
+	ID        string         `json:"id"`
+	ActorID   string         `json:"actor_id"`
+	ActorRole string         `json:"actor_role"`
+	Action    string         `json:"action"`
+	Resource  string         `json:"resource"`
+	ResourceID string        `json:"resource_id,omitempty"`
+	IP        string         `json:"ip,omitempty"`
+	Details   map[string]any `json:"details,omitempty"`
+	CreatoIl  time.Time      `json:"creato_il"`
+}
+
 type BlockedIP struct {
 	IP        string     `json:"ip"`
 	Reason    string     `json:"reason"`

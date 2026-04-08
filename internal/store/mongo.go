@@ -27,6 +27,7 @@ type MongoStore struct {
 	blockedIPs *mongo.Collection
 	allowedIPs *mongo.Collection
 	securityEvents *mongo.Collection
+	auditEvents *mongo.Collection
 	counters   *mongo.Collection
 }
 
@@ -55,6 +56,7 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 		blockedIPs: db.Collection("blocked_ips"),
 		allowedIPs: db.Collection("allowed_ips"),
 		securityEvents: db.Collection("security_events"),
+		auditEvents: db.Collection("audit_events"),
 		counters:  db.Collection("counters"),
 	}
 	if err := s.ensureIndexes(context.Background()); err != nil {
@@ -126,6 +128,14 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("security_events index creation failed: %w", err)
+	}
+	_, err = s.auditEvents.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "creatoil", Value: -1}}},
+		{Keys: bson.D{{Key: "action", Value: 1}, {Key: "resource", Value: 1}}},
+		{Keys: bson.D{{Key: "actorid", Value: 1}}},
+	})
+	if err != nil {
+		return fmt.Errorf("audit_events index creation failed: %w", err)
 	}
 	_, err = s.blockedIPs.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		{Keys: bson.D{{Key: "ip", Value: 1}}, Options: options.Index().SetUnique(true)},
@@ -932,6 +942,53 @@ func (s *MongoStore) GetSecurityEventByID(id string) (model.SecurityEvent, error
 	err := s.securityEvents.FindOne(ctx, bson.M{"id": id}).Decode(&evt)
 	if errorsIsNotFound(err) {
 		return model.SecurityEvent{}, ErrNotFound
+	}
+	return evt, err
+}
+
+func (s *MongoStore) AddAuditEvent(evt model.AuditEvent) (model.AuditEvent, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	if strings.TrimSpace(evt.Action) == "" || strings.TrimSpace(evt.Resource) == "" {
+		return model.AuditEvent{}, ErrForbiddenState
+	}
+	if strings.TrimSpace(evt.ID) == "" {
+		evt.ID = uuid.NewString()
+	}
+	if evt.CreatoIl.IsZero() {
+		evt.CreatoIl = time.Now().UTC()
+	}
+	if _, err := s.auditEvents.InsertOne(ctx, evt); err != nil {
+		return model.AuditEvent{}, err
+	}
+	return evt, nil
+}
+
+func (s *MongoStore) ListAuditEvents() []model.AuditEvent {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	cur, err := s.auditEvents.Find(ctx, bson.M{}, options.Find().SetSort(bson.M{"creatoil": -1}).SetLimit(2000))
+	if err != nil {
+		return []model.AuditEvent{}
+	}
+	defer cur.Close(ctx)
+	out := make([]model.AuditEvent, 0)
+	for cur.Next(ctx) {
+		var evt model.AuditEvent
+		if cur.Decode(&evt) == nil {
+			out = append(out, evt)
+		}
+	}
+	return out
+}
+
+func (s *MongoStore) GetAuditEventByID(id string) (model.AuditEvent, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	var evt model.AuditEvent
+	err := s.auditEvents.FindOne(ctx, bson.M{"id": id}).Decode(&evt)
+	if errorsIsNotFound(err) {
+		return model.AuditEvent{}, ErrNotFound
 	}
 	return evt, err
 }
