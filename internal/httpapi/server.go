@@ -99,6 +99,9 @@ func (s *Server) Router() http.Handler {
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
+			r.Get("/security/allowed-ips", s.handleBOListAllowedIPs)
+			r.Post("/security/allowed-ips/allow", s.handleBOAllowIP)
+			r.Post("/security/allowed-ips/revoke", s.handleBORevokeAllowedIP)
 			r.Get("/security/blocked-ips", s.handleBOListBlockedIPs)
 			r.Post("/security/blocked-ips/block", s.handleBOBlockIP)
 			r.Post("/security/blocked-ips/unblock", s.handleBOUnblockIP)
@@ -763,6 +766,97 @@ func (s *Server) handleBOListBlockedIPs(w http.ResponseWriter, _ *http.Request) 
 	})
 }
 
+func (s *Server) handleBOListAllowedIPs(w http.ResponseWriter, _ *http.Request) {
+	items := s.store.ListAllowedIPs()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"count": len(items),
+	})
+}
+
+func (s *Server) handleBOAllowIP(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		IP         string `json:"ip"`
+		Reason     string `json:"reason"`
+		TTLMinutes int    `json:"ttl_minutes"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	target, err := normalizeBlockTarget(req.IP)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		return
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = "manual_allow"
+	}
+	ttlMinutes := req.TTLMinutes
+	if ttlMinutes <= 0 {
+		ttlMinutes = envInt("SECURITY_ALLOW_IP_DEFAULT_TTL_MINUTES", 240)
+	}
+	now := time.Now().UTC()
+	entry := model.AllowedIP{
+		IP:        target,
+		Reason:    reason,
+		AllowedBy: claims.UserID,
+		AllowedAt: now,
+	}
+	if ttlMinutes > 0 {
+		exp := now.Add(time.Duration(ttlMinutes) * time.Minute)
+		entry.ExpiresAt = &exp
+	}
+	entry, err = s.store.UpsertAllowedIP(entry)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore salvataggio allowlist")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{
+		Type:    "IP_ALLOWED",
+		Outcome: "manual",
+		UserID:  claims.UserID,
+		IP:      target,
+		Metadata: map[string]any{
+			"reason":      reason,
+			"ttl_minutes": ttlMinutes,
+		},
+	})
+	writeJSON(w, http.StatusOK, entry)
+}
+
+func (s *Server) handleBORevokeAllowedIP(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	var req struct {
+		IP string `json:"ip"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	target, err := normalizeBlockTarget(req.IP)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		return
+	}
+	removed, err := s.store.RemoveAllowedIP(target)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
+		return
+	}
+	if !removed {
+		writeErr(w, http.StatusNotFound, "target non presente in allowlist")
+		return
+	}
+	s.recordSecurityEvent(model.SecurityEvent{
+		Type:    "IP_ALLOW_REVOKED",
+		Outcome: "manual",
+		UserID:  claims.UserID,
+		IP:      target,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "ip": target})
+}
+
 func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	var req struct {
@@ -1272,6 +1366,23 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 			if key == "" {
 				key = "unknown"
 			}
+			if allowed, entry := s.isClientAllowedIP(key); allowed {
+				s.recordSecurityEvent(model.SecurityEvent{
+					Type:      "IP_ALLOWLIST_MATCH",
+					Outcome:   "allowed",
+					IP:        key,
+					UserAgent: strings.TrimSpace(r.UserAgent()),
+					Metadata: map[string]any{
+						"path":       r.URL.Path,
+						"reason":     entry.Reason,
+						"allowed_by": entry.AllowedBy,
+						"allow_rule": entry.IP,
+						"expires_at": formatOptTime(entry.ExpiresAt),
+					},
+				})
+				next.ServeHTTP(w, r)
+				return
+			}
 			if blocked, entry := s.isClientBlockedIP(key); blocked {
 				s.recordSecurityEvent(model.SecurityEvent{
 					Type:      "IP_BLOCKED_REQUEST",
@@ -1376,6 +1487,19 @@ func ipMatchesBlockedTarget(clientIP net.IP, target string) bool {
 		return network.Contains(clientIP)
 	}
 	return false
+}
+
+func (s *Server) isClientAllowedIP(clientIPRaw string) (bool, model.AllowedIP) {
+	clientIP := net.ParseIP(strings.TrimSpace(clientIPRaw))
+	if clientIP == nil {
+		return false, model.AllowedIP{}
+	}
+	for _, entry := range s.store.ListAllowedIPs() {
+		if ipMatchesBlockedTarget(clientIP, entry.IP) {
+			return true, entry
+		}
+	}
+	return false, model.AllowedIP{}
 }
 
 func (s *Server) isClientBlockedIP(clientIPRaw string) (bool, model.BlockedIP) {

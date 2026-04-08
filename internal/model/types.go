@@ -142,3 +142,11 @@ type BlockedIP struct {
 	BlockedAt time.Time  `json:"blocked_at"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
+
+type AllowedIP struct {
+	IP        string     `json:"ip"`
+	Reason    string     `json:"reason"`
+	AllowedBy string     `json:"allowed_by"`
+	AllowedAt time.Time  `json:"allowed_at"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}

@@ -31,4 +31,8 @@ type DataStore interface {
 	RemoveBlockedIP(ip string) (bool, error)
 	ListBlockedIPs() []model.BlockedIP
 	GetBlockedIP(ip string) (model.BlockedIP, error)
+	UpsertAllowedIP(entry model.AllowedIP) (model.AllowedIP, error)
+	RemoveAllowedIP(ip string) (bool, error)
+	ListAllowedIPs() []model.AllowedIP
+	GetAllowedIP(ip string) (model.AllowedIP, error)
 }

@@ -28,6 +28,7 @@ type MemoryStore struct {
 	payments  map[string]model.Pagamento
 	webhooks  map[string]time.Time
 	blockedIPs map[string]model.BlockedIP
+	allowedIPs map[string]model.AllowedIP
 	securityEvents []model.SecurityEvent
 	byEmail   map[string]string
 	counters  map[string]*atomic.Uint64
@@ -40,6 +41,7 @@ func NewMemoryStore() *MemoryStore {
 		payments: make(map[string]model.Pagamento),
 		webhooks: make(map[string]time.Time),
 		blockedIPs: make(map[string]model.BlockedIP),
+		allowedIPs: make(map[string]model.AllowedIP),
 		securityEvents: make([]model.SecurityEvent, 0, 128),
 		byEmail:  make(map[string]string),
 		counters: map[string]*atomic.Uint64{"pratica": {}},
@@ -380,6 +382,67 @@ func (s *MemoryStore) GetBlockedIP(ip string) (model.BlockedIP, error) {
 	if entry.ExpiresAt != nil && time.Now().UTC().After(*entry.ExpiresAt) {
 		delete(s.blockedIPs, ip)
 		return model.BlockedIP{}, ErrNotFound
+	}
+	return entry, nil
+}
+
+func (s *MemoryStore) UpsertAllowedIP(entry model.AllowedIP) (model.AllowedIP, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip := strings.TrimSpace(entry.IP)
+	if ip == "" {
+		return model.AllowedIP{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	entry.IP = ip
+	if entry.AllowedAt.IsZero() {
+		entry.AllowedAt = now
+	}
+	s.allowedIPs[ip] = entry
+	return entry, nil
+}
+
+func (s *MemoryStore) RemoveAllowedIP(ip string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return false, ErrForbiddenState
+	}
+	if _, ok := s.allowedIPs[ip]; !ok {
+		return false, nil
+	}
+	delete(s.allowedIPs, ip)
+	return true, nil
+}
+
+func (s *MemoryStore) ListAllowedIPs() []model.AllowedIP {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	out := make([]model.AllowedIP, 0, len(s.allowedIPs))
+	for ip, entry := range s.allowedIPs {
+		if entry.ExpiresAt != nil && now.After(*entry.ExpiresAt) {
+			delete(s.allowedIPs, ip)
+			continue
+		}
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].AllowedAt.After(out[j].AllowedAt) })
+	return out
+}
+
+func (s *MemoryStore) GetAllowedIP(ip string) (model.AllowedIP, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ip = strings.TrimSpace(ip)
+	entry, ok := s.allowedIPs[ip]
+	if !ok {
+		return model.AllowedIP{}, ErrNotFound
+	}
+	if entry.ExpiresAt != nil && time.Now().UTC().After(*entry.ExpiresAt) {
+		delete(s.allowedIPs, ip)
+		return model.AllowedIP{}, ErrNotFound
 	}
 	return entry, nil
 }

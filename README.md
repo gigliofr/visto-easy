@@ -31,6 +31,9 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - `GET /api/pratiche/{id}/eventi`
 - `GET /api/bo/pratiche`
 - `GET /api/bo/utenti`
+- `GET /api/bo/security/allowed-ips`
+- `POST /api/bo/security/allowed-ips/allow`
+- `POST /api/bo/security/allowed-ips/revoke`
 - `GET /api/bo/security/blocked-ips`
 - `POST /api/bo/security/blocked-ips/block`
 - `POST /api/bo/security/blocked-ips/unblock`
@@ -64,6 +67,8 @@ Payload webhook supportato (compatibile anche con schema Stripe base):
 - `/api/bo/report.csv`: stessi filtri di `/api/bo/pratiche`
 
 Payload blocklist IP:
+- `POST /api/bo/security/allowed-ips/allow`: `{ "ip": "10.0.0.0/24", "reason": "trusted office", "ttl_minutes": 240 }`
+- `POST /api/bo/security/allowed-ips/revoke`: `{ "ip": "10.0.0.0/24" }`
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "1.2.3.4", "reason": "bruteforce", "ttl_minutes": 120 }`
 - `POST /api/bo/security/blocked-ips/block`: `{ "ip": "203.0.113.0/24", "reason": "abuse subnet", "ttl_minutes": 180 }`
 - `POST /api/bo/security/blocked-ips/unblock`: `{ "ip": "1.2.3.4" }` oppure `{ "ip": "203.0.113.0/24" }`
@@ -123,6 +128,7 @@ AUTH_LOCK_WINDOW_MINUTES=15
 SECURITY_ALERT_WINDOW_MINUTES=15
 SECURITY_ALERT_FAILED_THRESHOLD=5
 SECURITY_BLOCK_IP_DEFAULT_TTL_MINUTES=120
+SECURITY_ALLOW_IP_DEFAULT_TTL_MINUTES=240
 ```
 
 ## Note architetturali
