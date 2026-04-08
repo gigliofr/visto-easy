@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -69,7 +71,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(securityHeadersMiddleware)
 	r.Use(corsMiddleware)
 	r.Use(requestJSON)
-	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir("web/assets"))))
+	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(resolveWebPath(filepath.Join("assets"))))))
 
 	r.Get("/", s.handleRoot)
 	r.Get("/api/v1/health", s.handleHealth)
@@ -156,10 +158,33 @@ func (s *Server) Router() http.Handler {
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		http.ServeFile(w, r, "web/index.html")
+		http.ServeFile(w, r, resolveWebPath("index.html"))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})
+}
+
+func resolveWebPath(relative string) string {
+	relative = filepath.Clean(strings.TrimSpace(relative))
+	if relative == "." || relative == string(filepath.Separator) || relative == "" {
+		relative = "index.html"
+	}
+
+	cwdCandidate := filepath.Join("web", relative)
+	if _, err := os.Stat(cwdCandidate); err == nil {
+		return cwdCandidate
+	}
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if ok {
+		projectRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+		fallback := filepath.Join(projectRoot, "web", relative)
+		if _, err := os.Stat(fallback); err == nil {
+			return fallback
+		}
+	}
+
+	return cwdCandidate
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
