@@ -99,13 +99,26 @@ func (f *fakePolicyStore) RemoveBlockedIP(ip string) (bool, error) {
 	return false, nil
 }
 func (f *fakePolicyStore) ListBlockedIPs() []model.BlockedIP {
-	out := make([]model.BlockedIP, len(f.blocked))
-	copy(out, f.blocked)
+	now := time.Now().UTC()
+	filtered := make([]model.BlockedIP, 0, len(f.blocked))
+	for _, item := range f.blocked {
+		if item.ExpiresAt != nil && now.After(*item.ExpiresAt) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	f.blocked = filtered
+	out := make([]model.BlockedIP, len(filtered))
+	copy(out, filtered)
 	return out
 }
 func (f *fakePolicyStore) GetBlockedIP(ip string) (model.BlockedIP, error) {
+	now := time.Now().UTC()
 	for _, item := range f.blocked {
 		if item.IP == ip {
+			if item.ExpiresAt != nil && now.After(*item.ExpiresAt) {
+				return model.BlockedIP{}, store.ErrNotFound
+			}
 			return item, nil
 		}
 	}
@@ -131,13 +144,26 @@ func (f *fakePolicyStore) RemoveAllowedIP(ip string) (bool, error) {
 	return false, nil
 }
 func (f *fakePolicyStore) ListAllowedIPs() []model.AllowedIP {
-	out := make([]model.AllowedIP, len(f.allowed))
-	copy(out, f.allowed)
+	now := time.Now().UTC()
+	filtered := make([]model.AllowedIP, 0, len(f.allowed))
+	for _, item := range f.allowed {
+		if item.ExpiresAt != nil && now.After(*item.ExpiresAt) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	f.allowed = filtered
+	out := make([]model.AllowedIP, len(filtered))
+	copy(out, filtered)
 	return out
 }
 func (f *fakePolicyStore) GetAllowedIP(ip string) (model.AllowedIP, error) {
+	now := time.Now().UTC()
 	for _, item := range f.allowed {
 		if item.IP == ip {
+			if item.ExpiresAt != nil && now.After(*item.ExpiresAt) {
+				return model.AllowedIP{}, store.ErrNotFound
+			}
 			return item, nil
 		}
 	}
