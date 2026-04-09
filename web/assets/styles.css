@@ -695,6 +695,10 @@ h1 {
   gap: 10px;
 }
 
+body[data-auth="0"] .hero-meta {
+  display: none;
+}
+
 body[data-section="backoffice"] .hero {
   display: none;
 }
