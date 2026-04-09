@@ -1,4 +1,5 @@
 import { api, formJson } from './http.js';
+import { collectRichAttributes, initRichAttributesComposer, validateRichAttributes } from './visto_attributes.js';
 import {
   applyRoleGuards,
   els,
@@ -1424,13 +1425,27 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
+        const validation = validateRichAttributes();
+        if (!validation.ok) {
+          const preview = validation.errors.slice(0, 5).join(' | ');
+          if (feedback) {
+            feedback.hidden = false;
+            feedback.textContent = `Compilazione incompleta. Mancano: ${preview}${validation.errors.length > 5 ? ' ...' : ''}`;
+          }
+          notify('err', `Compila i campi obbligatori (${validation.errors.length})`);
+          return;
+        }
+        const richAttrs = collectRichAttributes();
+
         const data = await api('/api/pratiche/', {
           method: 'POST',
           body: JSON.stringify({
-            tipo_visto: payload.tipo_visto,
-            paese_dest: payload.paese_dest,
-            dati_anagrafici: {},
-            dati_passaporto: {},
+            tipo_visto: payload.tipo_visto || validation.values['3.02'],
+            paese_dest: payload.paese_dest || validation.values['3.01'],
+            dati_anagrafici: {
+              attributi_compilazione: richAttrs.sections,
+            },
+            dati_passaporto: richAttrs.passaporto,
           }),
         });
         out('Pratica creata', data);
@@ -1783,6 +1798,7 @@ export function initApp(bootMessage) {
   wireTabs();
   wireRichTabs();
   wireAuthViews();
+  initRichAttributesComposer();
   wireSettingsTabs();
   wireBackofficeTabs();
   wireBOPraticheTabs();

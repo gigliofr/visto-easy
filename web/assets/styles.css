@@ -998,6 +998,62 @@ body[data-auth="1"] #btnLogout {
   color: #1f4f8f;
 }
 
+.rich-attributes-composer {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #e5e7ee;
+  border-radius: 12px;
+  background: #f9fafc;
+  padding: 10px;
+}
+
+.rich-attributes-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.rich-attributes-head .helper-text {
+  margin: 4px 0 0;
+}
+
+.rich-attr-section {
+  border: 1px solid #dde2ec;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px;
+}
+
+.rich-attr-section summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.rich-attr-grid {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.rich-attr-field {
+  font-size: 0.84rem;
+}
+
+.rich-req {
+  color: #b42318;
+}
+
+.rich-cond {
+  color: #8f6b00;
+  font-size: 0.78rem;
+}
+
+@media (min-width: 980px) {
+  .rich-attr-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .surface-block .section-title {
   margin-top: 0;
 }
