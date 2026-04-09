@@ -129,6 +129,20 @@ Frontend web:
 http://localhost:8080/
 ```
 
+Script Mongo per creare o aggiornare un'utenza amministrativa:
+
+```bash
+go run ./scripts/create_admin_user.go -uri "$env:MONGODB_URI" -db "$env:MONGODB_DB_NAME" -email "admin@vistoeasy.local" -password "Admin123!Change" -nome "Anna" -cognome "Admin"
+```
+
+Variabili alternative supportate dallo script:
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `ADMIN_NOME`
+- `ADMIN_COGNOME`
+- `MONGODB_URI`
+- `MONGODB_DB_NAME`
+
 Account backoffice predefiniti (seeding dev attivo):
 - Email: `operatore@vistoeasy.local`
 - Email: `supervisore@vistoeasy.local`
