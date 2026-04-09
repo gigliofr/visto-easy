@@ -41,6 +41,9 @@
   list-style: none;
 }
 
+.rich-tabs .nav-item {
+  list-style: none;
+}
 .nav-tabs.auto > * {
   flex: 1 1 auto;
 }
@@ -67,6 +70,8 @@
   background: #101113;
   color: #fff;
   border-color: #101113;
+  box-shadow: 0 8px 18px rgba(16, 17, 19, 0.18);
+  transform: translateY(-1px);
 }
 
 .nav-tabs .tab:focus-visible,

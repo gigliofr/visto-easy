@@ -1435,6 +1435,7 @@ function wireForms() {
         out('Pratica creata', data);
         notify('ok', 'Pratica creata');
         const createdID = data.id || data.pratica?.id || '';
+        showRichTab('active');
         await loadMiePratiche(createdID);
       });
     } catch (err) {
