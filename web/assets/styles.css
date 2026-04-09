@@ -935,6 +935,14 @@ body[data-auth="1"] #btnLogout {
   flex-wrap: wrap;
   padding: 2px 0 0;
 }
+.rich-tabs .nav-link {
+  min-height: 42px;
+  font-size: 0.94rem;
+  letter-spacing: 0.01em;
+}
+.rich-tabs .nav-link.active {
+  box-shadow: 0 10px 20px rgba(16, 17, 19, 0.22);
+}
 
 .rich-tabs-content {
   display: grid;
@@ -983,6 +991,11 @@ body[data-auth="1"] #btnLogout {
 
 .rich-tab-panel .toolbar {
   margin-top: 0;
+}
+.rich-feedback {
+  margin-top: 6px;
+  font-weight: 700;
+  color: #1f4f8f;
 }
 
 .surface-block .section-title {
@@ -1305,17 +1318,6 @@ textarea:focus {
   .rich-layout {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
     align-items: start;
-  }
-
-  #richiedente #formCreatePratica,
-  #richiedente #formDocUpload {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 14px;
-  }
-
-  #richiedente #formCreatePratica button,
-  #richiedente #formDocUpload button {
-    grid-column: 1 / -1;
   }
 }
 

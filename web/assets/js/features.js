@@ -1420,6 +1420,7 @@ function wireForms() {
   document.getElementById('formCreatePratica').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const submit = ev.currentTarget.querySelector('button[type="submit"]');
+    const feedback = document.getElementById('richCreateFeedback');
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
@@ -1435,10 +1436,19 @@ function wireForms() {
         out('Pratica creata', data);
         notify('ok', 'Pratica creata');
         const createdID = data.id || data.pratica?.id || '';
+        if (feedback) {
+          const code = data.codice || data.pratica?.codice || createdID || 'nuova pratica';
+          feedback.hidden = false;
+          feedback.textContent = `Pratica creata con successo: ${code}`;
+        }
         showRichTab('active');
         await loadMiePratiche(createdID);
       });
     } catch (err) {
+      if (feedback) {
+        feedback.hidden = false;
+        feedback.textContent = `Errore creazione pratica: ${extractErrMessage(err)}`;
+      }
       notify('err', extractErrMessage(err));
     }
   });
