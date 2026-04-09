@@ -143,6 +143,18 @@ Variabili alternative supportate dallo script:
 - `MONGODB_URI`
 - `MONGODB_DB_NAME`
 
+Script seed Mongo per creare utenti richiedenti e pratiche demo in vari stati:
+
+```bash
+go run ./scripts/seed_demo_data -uri "$env:MONGODB_URI" -db "$env:MONGODB_DB_NAME" -users 10 -pratiche 100 -password "User123!Demo" -prefix "seed"
+```
+
+Opzioni principali script seed:
+- `-users` numero utenti richiedenti
+- `-pratiche` numero pratiche
+- `-password` password comune utenti seed
+- `-prefix` prefisso email/codici seed
+
 Account backoffice predefiniti (seeding dev attivo):
 - Email: `operatore@vistoeasy.local`
 - Email: `supervisore@vistoeasy.local`
