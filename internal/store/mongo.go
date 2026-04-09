@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -158,7 +159,11 @@ func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 
 func (s *MongoStore) seedBackofficeUsers(ctx context.Context) error {
 	now := time.Now().UTC()
-	pwd, err := bcrypt.GenerateFromPassword([]byte("ChangeMe123!"), 12)
+	seedPassword := strings.TrimSpace(os.Getenv("BACKOFFICE_SEED_PASSWORD"))
+	if len(seedPassword) < 8 {
+		seedPassword = "Admin123!Change"
+	}
+	pwd, err := bcrypt.GenerateFromPassword([]byte(seedPassword), 12)
 	if err != nil {
 		return err
 	}
@@ -169,7 +174,13 @@ func (s *MongoStore) seedBackofficeUsers(ctx context.Context) error {
 	}
 	for _, u := range seed {
 		filter := bson.M{"email": u.Email}
-		update := bson.M{"$setOnInsert": u}
+		update := bson.M{
+			"$setOnInsert": u,
+			"$set": bson.M{
+				"passwordhash": string(pwd),
+				"aggiornatoil": now,
+			},
+		}
 		_, err := s.users.UpdateOne(ctx, filter, update, options.Update().SetUpsert(true))
 		if err != nil {
 			return err

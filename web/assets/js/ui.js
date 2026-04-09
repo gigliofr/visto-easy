@@ -18,6 +18,7 @@ export const els = {
   kpiAudit: document.getElementById('kpiAudit'),
   toastRegion: document.getElementById('toastRegion'),
   panelAuth: document.getElementById('auth'),
+  panelProfilo: document.getElementById('profilo'),
   panelRichiedente: document.getElementById('richiedente'),
   panelBackoffice: document.getElementById('backoffice'),
 };
@@ -91,10 +92,11 @@ export function renderList(container, items, mapper) {
 
 export function setSectionFromHash() {
   const hash = (window.location.hash || '#auth').toLowerCase();
-  const valid = ['#auth', '#richiedente', '#backoffice'];
+  const valid = ['#auth', '#profilo', '#richiedente', '#backoffice'];
   const current = valid.includes(hash) ? hash : '#auth';
-  [els.panelAuth, els.panelRichiedente, els.panelBackoffice].forEach((panel) => panel.classList.add('hidden'));
+  [els.panelAuth, els.panelProfilo, els.panelRichiedente, els.panelBackoffice].forEach((panel) => panel.classList.add('hidden'));
   if (current === '#auth') els.panelAuth.classList.remove('hidden');
+  if (current === '#profilo') els.panelProfilo.classList.remove('hidden');
   if (current === '#richiedente') els.panelRichiedente.classList.remove('hidden');
   if (current === '#backoffice') els.panelBackoffice.classList.remove('hidden');
 }
@@ -102,6 +104,7 @@ export function setSectionFromHash() {
 export function applyRoleGuards() {
   if (!state.accessToken) {
     els.panelAuth.classList.remove('hidden');
+    els.panelProfilo.classList.add('hidden');
     els.panelRichiedente.classList.add('hidden');
     els.panelBackoffice.classList.add('hidden');
     return;
@@ -109,6 +112,7 @@ export function applyRoleGuards() {
   if (hasRichiedenteRole()) {
     if (window.location.hash === '#backoffice') window.location.hash = '#richiedente';
     els.panelAuth.classList.add('hidden');
+    els.panelProfilo.classList.remove('hidden');
     els.panelRichiedente.classList.remove('hidden');
     els.panelBackoffice.classList.add('hidden');
     return;
@@ -116,11 +120,13 @@ export function applyRoleGuards() {
   if (hasBackofficeRole()) {
     if (window.location.hash === '#richiedente') window.location.hash = '#backoffice';
     els.panelAuth.classList.add('hidden');
+    els.panelProfilo.classList.remove('hidden');
     els.panelRichiedente.classList.add('hidden');
     els.panelBackoffice.classList.remove('hidden');
     return;
   }
   els.panelAuth.classList.remove('hidden');
+  els.panelProfilo.classList.add('hidden');
   els.panelRichiedente.classList.add('hidden');
   els.panelBackoffice.classList.add('hidden');
 }

@@ -36,56 +36,52 @@
       <article class="panel" id="auth">
         <div class="panel-head">
           <h2>Autenticazione</h2>
-          <p>Login, registrazione, reset password, 2FA.</p>
+          <p>Accedi con email e password.</p>
         </div>
-        <div class="tabs" id="authTabs">
-          <button class="tab active" data-tab="login" type="button">Login</button>
-          <button class="tab" data-tab="register" type="button">Register</button>
-          <button class="tab" data-tab="recovery" type="button">Recovery</button>
-          <button class="tab" data-tab="twofa" type="button">2FA</button>
-        </div>
-
-        <form class="tab-pane active" data-pane="login" id="formLogin">
+        <form id="formLogin" class="inline-form">
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required minlength="8"></label>
-          <label>OTP (opzionale)<input name="otp" type="text" placeholder="123456"></label>
           <button class="btn btn-solid" type="submit">Accedi</button>
         </form>
 
-        <form class="tab-pane" data-pane="register" id="formRegister">
-          <label>Nome<input name="nome" type="text" required></label>
-          <label>Cognome<input name="cognome" type="text" required></label>
-          <label>Email<input name="email" type="email" required></label>
-          <label>Password<input name="password" type="password" required minlength="8"></label>
-          <button class="btn btn-solid" type="submit">Crea account</button>
-        </form>
-
-        <div class="tab-pane" data-pane="recovery">
-          <form id="formForgot">
+        <details class="auth-extra">
+          <summary>Registrazione e recupero password</summary>
+          <form id="formRegister" class="inline-form">
+            <label>Nome<input name="nome" type="text" required></label>
+            <label>Cognome<input name="cognome" type="text" required></label>
+            <label>Email<input name="email" type="email" required></label>
+            <label>Password<input name="password" type="password" required minlength="8"></label>
+            <button class="btn btn-solid" type="submit">Crea account</button>
+          </form>
+          <form id="formForgot" class="inline-form">
             <label>Email<input name="email" type="email" required></label>
             <button class="btn btn-ghost" type="submit">Invia reset</button>
           </form>
-          <form id="formReset">
+          <form id="formReset" class="inline-form">
             <label>Token<input name="token" type="text" required></label>
             <label>Nuova password<input name="new_password" type="password" required minlength="8"></label>
             <button class="btn btn-solid" type="submit">Conferma reset</button>
           </form>
-        </div>
+        </details>
+      </article>
 
-        <div class="tab-pane" data-pane="twofa">
-          <div class="inline-actions">
-            <button class="btn btn-ghost" id="btn2FASetup" type="button">Setup 2FA</button>
-          </div>
-          <form id="form2FAEnable">
-            <label>Code enable<input name="code" type="text" required></label>
-            <button class="btn btn-solid" type="submit">Enable</button>
-          </form>
-          <form id="form2FADisable">
-            <label>Code disable<input name="code" type="text" required></label>
-            <button class="btn btn-ghost" type="submit">Disable</button>
-          </form>
-          <pre id="twofaOutput" class="mono-box"></pre>
+      <article class="panel" id="profilo">
+        <div class="panel-head">
+          <h2>Profilo e sicurezza</h2>
+          <p>Gestisci il secondo fattore (2FA) dopo aver effettuato l'accesso.</p>
         </div>
+        <div class="inline-actions">
+          <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+        </div>
+        <form id="form2FAEnable" class="inline-form">
+          <label>Codice da app autenticatore<input name="code" type="text" required></label>
+          <button class="btn btn-solid" type="submit">Attiva 2FA</button>
+        </form>
+        <form id="form2FADisable" class="inline-form">
+          <label>Codice corrente<input name="code" type="text" required></label>
+          <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
+        </form>
+        <pre id="twofaOutput" class="mono-box"></pre>
       </article>
 
       <article class="panel" id="richiedente">
