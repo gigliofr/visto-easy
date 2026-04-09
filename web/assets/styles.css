@@ -887,7 +887,7 @@ body[data-auth="1"] #btnLogout {
 }
 
 #richiedente.panel {
-  width: min(1180px, 100%);
+  width: min(1220px, 100%);
 }
 
 #backoffice.panel {
@@ -928,20 +928,22 @@ body[data-auth="1"] #btnLogout {
 
 .rich-tabs-shell {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .rich-tabs {
   flex-wrap: wrap;
+  padding: 2px 0 0;
 }
 
 .rich-tabs-content {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .rich-tab-panel {
   margin: 0;
+  padding: 14px;
 }
 
 .rich-tab-panel.hidden {
@@ -958,6 +960,29 @@ body[data-auth="1"] #btnLogout {
   border: 1px solid #e4e7ed;
   border-radius: 14px;
   padding: 12px;
+}
+
+#richiedente .panel-head h2 {
+  font-size: 1.1rem;
+}
+
+#richiedente .panel-head p,
+.rich-tab-panel .helper-text {
+  font-size: 0.84rem;
+}
+
+.rich-tab-panel .section-title {
+  margin-bottom: 8px;
+}
+
+.rich-tab-panel .inline-form,
+.rich-tab-panel .toolbar,
+.rich-tab-panel .list {
+  max-width: 100%;
+}
+
+.rich-tab-panel .toolbar {
+  margin-top: 0;
 }
 
 .surface-block .section-title {
