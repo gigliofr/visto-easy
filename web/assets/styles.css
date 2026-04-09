@@ -89,6 +89,14 @@ h1 {
   text-decoration: none;
 }
 
+#btnLogout {
+  display: none;
+}
+
+body[data-auth="1"] #btnLogout {
+  display: inline-flex;
+}
+
 .flow-nav {
   margin-top: 22px;
   display: flex;
@@ -280,6 +288,22 @@ form,
 .inline-form {
   display: grid;
   gap: 10px;
+}
+
+.auth-mobile-switch {
+  display: none;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.auth-desktop-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.auth-view {
+  margin-top: 10px;
 }
 
 label {
@@ -519,6 +543,18 @@ textarea:focus {
 
   .kpi-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-mobile-switch {
+    display: flex;
+  }
+
+  .auth-mobile-switch .tab {
+    flex: 1;
+  }
+
+  .auth-desktop-actions {
+    display: none;
   }
 }
 

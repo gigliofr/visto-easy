@@ -30,6 +30,7 @@ export function renderSessionInfo() {
   els.sessionUser.textContent = `Utente: ${email}`;
   els.apiBaseInput.value = state.apiBase;
   const loggedIn = hasActiveSession();
+  document.body.dataset.auth = loggedIn ? '1' : '0';
   if (els.btnRefreshSession) els.btnRefreshSession.hidden = !loggedIn;
   if (els.btnLogout) els.btnLogout.hidden = !loggedIn;
 }

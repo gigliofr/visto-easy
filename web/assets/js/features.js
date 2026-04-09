@@ -256,6 +256,34 @@ function wireTabs() {
   });
 }
 
+function showAuthView(view) {
+  const target = String(view || 'login').toLowerCase();
+  document.querySelectorAll('#auth .auth-view[data-auth-view]').forEach((el) => {
+    const isTarget = String(el.dataset.authView || '').toLowerCase() === target;
+    if (isTarget) {
+      el.classList.remove('hidden');
+      el.classList.add('active');
+    } else {
+      el.classList.add('hidden');
+      el.classList.remove('active');
+    }
+  });
+}
+
+function wireAuthViews() {
+  const controls = document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view], #auth .auth-desktop-actions [data-auth-view]');
+  controls.forEach((el) => {
+    el.addEventListener('click', (ev) => {
+      const view = ev.currentTarget.dataset.authView;
+      showAuthView(view);
+      document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.authView === view);
+      });
+    });
+  });
+  showAuthView('login');
+}
+
 function populateDocPraticaSelect(pratiche, preferredID = '') {
   const select = document.getElementById('docPraticaSelect');
   if (!select) return;
@@ -823,6 +851,7 @@ export function initApp(bootMessage) {
 
   renderSessionInfo();
   wireTabs();
+  wireAuthViews();
   wireForms();
   wireSessionButtons();
   wireActivePracticeFilters();

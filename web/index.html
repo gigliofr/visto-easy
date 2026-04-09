@@ -23,7 +23,7 @@
       <div class="hero-meta">
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
-        <button class="btn btn-solid" id="btnLogout" type="button" hidden>Esci</button>
+        <button class="btn btn-solid" id="btnLogout" type="button">Esci</button>
       </div>
 
       <div class="hidden-tech" aria-hidden="true">
@@ -38,21 +38,32 @@
           <h2>Autenticazione</h2>
           <p>Accedi con email e password.</p>
         </div>
-        <form id="formLogin" class="inline-form">
+        <div class="auth-mobile-switch" id="authMobileSwitch" role="tablist" aria-label="Azioni autenticazione">
+          <button type="button" class="tab active" data-auth-view="login">Login</button>
+          <button type="button" class="tab" data-auth-view="register">Crea account</button>
+          <button type="button" class="tab" data-auth-view="recovery">Recupero</button>
+        </div>
+
+        <form id="formLogin" class="inline-form auth-view" data-auth-view="login">
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required minlength="8"></label>
           <button class="btn btn-solid" type="submit">Accedi</button>
         </form>
 
-        <details class="auth-extra">
-          <summary>Registrazione e recupero password</summary>
-          <form id="formRegister" class="inline-form">
-            <label>Nome<input name="nome" type="text" required></label>
-            <label>Cognome<input name="cognome" type="text" required></label>
-            <label>Email<input name="email" type="email" required></label>
-            <label>Password<input name="password" type="password" required minlength="8"></label>
-            <button class="btn btn-solid" type="submit">Crea account</button>
-          </form>
+        <div class="auth-desktop-actions">
+          <button type="button" class="btn btn-ghost" data-auth-view="register">Crea account</button>
+          <button type="button" class="btn btn-ghost" data-auth-view="recovery">Recupero password</button>
+        </div>
+
+        <form id="formRegister" class="inline-form auth-view hidden" data-auth-view="register">
+          <label>Nome<input name="nome" type="text" required></label>
+          <label>Cognome<input name="cognome" type="text" required></label>
+          <label>Email<input name="email" type="email" required></label>
+          <label>Password<input name="password" type="password" required minlength="8"></label>
+          <button class="btn btn-solid" type="submit">Conferma creazione account</button>
+        </form>
+
+        <section class="auth-view hidden" data-auth-view="recovery">
           <form id="formForgot" class="inline-form">
             <label>Email<input name="email" type="email" required></label>
             <button class="btn btn-ghost" type="submit">Invia reset</button>
@@ -60,9 +71,9 @@
           <form id="formReset" class="inline-form">
             <label>Token<input name="token" type="text" required></label>
             <label>Nuova password<input name="new_password" type="password" required minlength="8"></label>
-            <button class="btn btn-solid" type="submit">Conferma reset</button>
+            <button class="btn btn-solid" type="submit">Conferma reset password</button>
           </form>
-        </details>
+        </section>
       </article>
 
       <article class="panel hidden" id="profilo">
