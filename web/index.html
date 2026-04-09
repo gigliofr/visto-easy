@@ -420,13 +420,18 @@
 
                 <section class="bo-users-panel hidden" data-bo-users-panel="operatori" hidden>
                   <h3 class="section-title">Operatori</h3>
-                  <form id="formBOInviteOperator" class="inline-form bo-invite-form">
-                    <label>Email operatore<input name="email" type="email" required placeholder="nome.cognome@azienda.it"></label>
-                    <label>Nome<input name="nome" type="text" required></label>
-                    <label>Cognome<input name="cognome" type="text" required></label>
-                    <button class="btn btn-solid" type="submit">Invita operatore</button>
-                  </form>
-                  <div id="boInviteOperatorOutput" class="mono-box bo-invite-output"></div>
+                  <div class="toolbar bo-users-actions">
+                    <button class="btn btn-ghost" id="btnBOToggleInviteOperator" type="button" aria-expanded="false" aria-controls="boInviteOperatorBox">Invita nuovo operatore</button>
+                  </div>
+                  <section id="boInviteOperatorBox" class="hidden" hidden>
+                    <form id="formBOInviteOperator" class="inline-form bo-invite-form">
+                      <label>Email operatore<input name="email" type="email" required placeholder="nome.cognome@azienda.it"></label>
+                      <label>Nome<input name="nome" type="text" required></label>
+                      <label>Cognome<input name="cognome" type="text" required></label>
+                      <button class="btn btn-solid" type="submit">Invita operatore</button>
+                    </form>
+                    <div id="boInviteOperatorOutput" class="mono-box bo-invite-output"></div>
+                  </section>
                   <div class="bo-pending-invites" id="boPendingInvites">
                     <h4>Inviti pendenti</h4>
                     <div id="boUtentiOperatoriPending" class="list compact"></div>

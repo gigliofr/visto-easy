@@ -552,6 +552,27 @@ function wireBOUsersTabs() {
   showBOUsersView(boState.activeUsersView || 'clienti');
 }
 
+function setBOInviteOperatorBox(open) {
+  const box = document.getElementById('boInviteOperatorBox');
+  const button = document.getElementById('btnBOToggleInviteOperator');
+  if (!box || !button) return;
+  const isOpen = Boolean(open);
+  box.classList.toggle('hidden', !isOpen);
+  box.hidden = !isOpen;
+  button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  button.textContent = isOpen ? 'Chiudi invito operatore' : 'Invita nuovo operatore';
+}
+
+function wireBOInviteOperatorToggle() {
+  const button = document.getElementById('btnBOToggleInviteOperator');
+  if (!button) return;
+  setBOInviteOperatorBox(false);
+  button.addEventListener('click', () => {
+    const expanded = button.getAttribute('aria-expanded') === 'true';
+    setBOInviteOperatorBox(!expanded);
+  });
+}
+
 function getRichiedenteLabel(p) {
   const nome = String(p.richiedente?.nome || '').trim();
   const cognome = String(p.richiedente?.cognome || '').trim();
@@ -1450,6 +1471,7 @@ function wireForms() {
           out('BO invito operatore', data);
           notify('ok', 'Invito operatore inviato');
           ev.currentTarget.reset();
+          setBOInviteOperatorBox(false);
           showBOUsersView('operatori');
           await loadBOUsers();
         });
@@ -1698,6 +1720,7 @@ export function initApp(bootMessage) {
   wireBackofficeTabs();
   wireBOPraticheTabs();
   wireBOUsersTabs();
+  wireBOInviteOperatorToggle();
   wireBackofficeMenu();
   wireBackofficeOpsMenu();
   wireBackofficeFiltersToggle();
