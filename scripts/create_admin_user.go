@@ -68,7 +68,6 @@ func main() {
 		"$setOnInsert": bson.M{
 			"id":              uuid.NewString(),
 			"creatoil":        now,
-			"emailverificata": true,
 		},
 		"$set": bson.M{
 			"email":           strings.ToLower(strings.TrimSpace(*email)),
