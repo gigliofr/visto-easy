@@ -28,7 +28,7 @@ export function renderSessionInfo() {
   els.sessionRole.textContent = `Ruolo: ${currentRole}`;
   els.sessionUser.textContent = `Utente: ${email}`;
   els.apiBaseInput.value = state.apiBase;
-  const loggedIn = Boolean(state.accessToken);
+  const loggedIn = Boolean(state.accessToken && state.user && state.user.email);
   if (els.btnRefreshSession) els.btnRefreshSession.hidden = !loggedIn;
   if (els.btnLogout) els.btnLogout.hidden = !loggedIn;
 }
