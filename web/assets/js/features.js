@@ -273,7 +273,7 @@ function showAuthView(view) {
 }
 
 function wireAuthViews() {
-  const controls = document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view], #auth .auth-desktop-actions [data-auth-view]');
+  const controls = document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view], #auth .auth-desktop-actions [data-auth-view], #auth .auth-back[data-auth-view]');
   controls.forEach((el) => {
     el.addEventListener('click', (ev) => {
       const view = ev.currentTarget.dataset.authView;
