@@ -123,6 +123,21 @@
                 <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
               </div>
               <h3 class="section-title">2. Pratiche attive</h3>
+              <div class="inline-form active-filters">
+                <label>Stato
+                  <select id="activeStatusFilter" name="active_status_filter">
+                    <option value="ALL" selected>Tutti</option>
+                    <option value="BOZZA">Bozza</option>
+                    <option value="INVIATA">Inviata</option>
+                    <option value="IN_LAVORAZIONE">In lavorazione</option>
+                    <option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option>
+                    <option value="SOSPESA">Sospesa</option>
+                  </select>
+                </label>
+                <label>Cerca
+                  <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese">
+                </label>
+              </div>
               <div id="miePratiche" class="list"></div>
             </div>
           </section>

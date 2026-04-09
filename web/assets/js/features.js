@@ -33,6 +33,10 @@ const FALLBACK_COUNTRIES = [
 
 const PRACTICE_HISTORY_KEY = 'visto_easy_practice_history_v1';
 const FINAL_PRACTICE_STATUSES = new Set(['APPROVATA', 'RIFIUTATA', 'ANNULLATA', 'COMPLETATA', 'CHIUSA']);
+const activePracticeFilters = {
+  status: 'ALL',
+  query: '',
+};
 
 function parseTs(value) {
   const ts = Date.parse(value || '');
@@ -103,6 +107,34 @@ function isHistoricalPractice(p) {
 
 function isDraftPractice(p) {
   return String(p?.stato || '').toUpperCase() === 'BOZZA';
+}
+
+function filterActivePractices(items) {
+  const statusFilter = String(activePracticeFilters.status || 'ALL').toUpperCase();
+  const queryFilter = String(activePracticeFilters.query || '').trim().toLowerCase();
+  return (items || []).filter((p) => {
+    const currentStatus = String(p.stato || '').toUpperCase();
+    if (statusFilter !== 'ALL' && currentStatus !== statusFilter) return false;
+    if (!queryFilter) return true;
+    const blob = `${p.codice || ''} ${p.tipo_visto || ''} ${p.paese_dest || ''}`.toLowerCase();
+    return blob.includes(queryFilter);
+  });
+}
+
+function wireActivePracticeFilters() {
+  const statusEl = document.getElementById('activeStatusFilter');
+  const queryEl = document.getElementById('activeQueryFilter');
+  if (!statusEl || !queryEl) return;
+
+  statusEl.addEventListener('change', async (ev) => {
+    activePracticeFilters.status = ev.currentTarget.value || 'ALL';
+    await loadMiePratiche();
+  });
+
+  queryEl.addEventListener('input', async (ev) => {
+    activePracticeFilters.query = ev.currentTarget.value || '';
+    await loadMiePratiche();
+  });
 }
 
 function renderPracticeHistory(items) {
@@ -210,8 +242,9 @@ async function loadMiePratiche(preferredPraticaID = '') {
   renderPracticeHistory(history);
 
   const operative = data.filter((p) => !isHistoricalPractice(p));
+  const filteredOperative = filterActivePractices(operative);
   populateDocPraticaSelect(operative.length > 0 ? operative : data, preferredPraticaID);
-  renderList(els.miePratiche, operative, (p) => `
+  renderList(els.miePratiche, filteredOperative, (p) => `
     <article class="list-item">
       <h3>${p.codice || p.id} - ${p.stato}</h3>
       <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
@@ -269,7 +302,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
     });
   });
 
-  out('Pratiche caricate', { operative: operative.length, storico: history.length });
+  out('Pratiche caricate', { operative: operative.length, filtrate: filteredOperative.length, storico: history.length });
 }
 
 function computeStatusBreakdown(items) {
@@ -730,6 +763,7 @@ export function initApp(bootMessage) {
   wireTabs();
   wireForms();
   wireSessionButtons();
+  wireActivePracticeFilters();
   wireDocUploadMetadata();
   loadCountriesIntoSelect().catch(() => {});
   setSectionFromHash();
