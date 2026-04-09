@@ -17,12 +17,37 @@ export function role() {
   return state.user?.ruolo || '';
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = normalized.length % 4;
+    const padded = normalized + (pad ? '='.repeat(4 - pad) : '');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+export function isAccessTokenExpired() {
+  if (!state.accessToken) return true;
+  const payload = decodeJwtPayload(state.accessToken);
+  if (!payload || typeof payload.exp !== 'number') return true;
+  const nowSec = Math.floor(Date.now() / 1000);
+  return payload.exp <= nowSec;
+}
+
+export function hasActiveSession() {
+  return Boolean(state.accessToken && state.user?.email && !isAccessTokenExpired());
+}
+
 export function hasBackofficeRole() {
-  return role() === 'ADMIN' || role() === 'OPERATORE' || role() === 'SUPERVISORE';
+  return hasActiveSession() && (role() === 'ADMIN' || role() === 'OPERATORE' || role() === 'SUPERVISORE');
 }
 
 export function hasRichiedenteRole() {
-  return role() === 'RICHIEDENTE';
+  return hasActiveSession() && role() === 'RICHIEDENTE';
 }
 
 export function saveApiBase(value) {

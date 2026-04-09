@@ -1,4 +1,4 @@
-import { hasBackofficeRole, hasRichiedenteRole, role, state } from './session.js';
+import { hasActiveSession, hasBackofficeRole, hasRichiedenteRole, role, state } from './session.js';
 
 export const els = {
   appOutput: document.getElementById('appOutput'),
@@ -29,7 +29,7 @@ export function renderSessionInfo() {
   els.sessionRole.textContent = `Ruolo: ${currentRole}`;
   els.sessionUser.textContent = `Utente: ${email}`;
   els.apiBaseInput.value = state.apiBase;
-  const loggedIn = Boolean(state.accessToken && state.user && state.user.email);
+  const loggedIn = hasActiveSession();
   if (els.btnRefreshSession) els.btnRefreshSession.hidden = !loggedIn;
   if (els.btnLogout) els.btnLogout.hidden = !loggedIn;
 }
@@ -102,7 +102,7 @@ export function setSectionFromHash() {
 }
 
 export function applyRoleGuards() {
-  if (!state.accessToken) {
+  if (!hasActiveSession()) {
     els.panelAuth.classList.remove('hidden');
     els.panelProfilo.classList.add('hidden');
     els.panelRichiedente.classList.add('hidden');

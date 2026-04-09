@@ -12,6 +12,7 @@ import {
 } from './ui.js';
 import {
   clearSession,
+  hasActiveSession,
   hasBackofficeRole,
   hasRichiedenteRole,
   role,
@@ -803,6 +804,10 @@ function wireSessionButtons() {
 }
 
 export function initApp(bootMessage) {
+  if (!hasActiveSession() && (state.accessToken || state.refreshToken || state.user)) {
+    clearSession();
+  }
+
   const wantsBackofficePath = window.location.pathname.toLowerCase().startsWith('/backoffice');
   let deniedBackofficeByRole = false;
   if (wantsBackofficePath) {

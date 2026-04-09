@@ -23,7 +23,7 @@
       <div class="hero-meta">
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
-        <button class="btn btn-solid" id="btnLogout" type="button">Esci</button>
+        <button class="btn btn-solid" id="btnLogout" type="button" hidden>Esci</button>
       </div>
 
       <div class="hidden-tech" aria-hidden="true">
@@ -65,7 +65,7 @@
         </details>
       </article>
 
-      <article class="panel" id="profilo">
+      <article class="panel hidden" id="profilo">
         <div class="panel-head">
           <h2>Profilo e sicurezza</h2>
           <p>Gestisci il secondo fattore (2FA) dopo aver effettuato l'accesso.</p>
@@ -84,7 +84,7 @@
         <pre id="twofaOutput" class="mono-box"></pre>
       </article>
 
-      <article class="panel" id="richiedente">
+      <article class="panel hidden" id="richiedente">
         <div class="panel-head">
           <h2>Area Richiedente</h2>
           <p>Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
@@ -184,7 +184,7 @@
         </div>
       </article>
 
-      <article class="panel" id="backoffice">
+      <article class="panel hidden" id="backoffice">
         <div class="panel-head">
           <h2>Backoffice</h2>
           <p>Pratiche, utenti, audit eventi.</p>
