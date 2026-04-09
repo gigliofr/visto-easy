@@ -262,9 +262,11 @@ function showAuthView(view) {
     const isTarget = String(el.dataset.authView || '').toLowerCase() === target;
     if (isTarget) {
       el.classList.remove('hidden');
+      el.hidden = false;
       el.classList.add('active');
     } else {
       el.classList.add('hidden');
+      el.hidden = true;
       el.classList.remove('active');
     }
   });
