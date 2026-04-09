@@ -250,6 +250,31 @@ h1 {
   margin-bottom: 10px;
 }
 
+.bo-help {
+  margin: 0 0 12px;
+  border: 1px solid #e2e5ec;
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px 10px;
+}
+
+.bo-help summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bo-help p,
+.bo-help ul {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.bo-help ul {
+  padding-left: 18px;
+}
+
 .tab {
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -398,7 +423,7 @@ textarea:focus {
 
 @media (min-width: 980px) {
   .active-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     column-gap: 10px;
   }
 

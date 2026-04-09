@@ -134,9 +134,15 @@ Account backoffice predefiniti (seeding dev attivo):
 - Email: `admin@vistoeasy.local`
 - Password comune: valore di `BACKOFFICE_SEED_PASSWORD` (default dev: `Admin123!Change`)
 
+Account demo richiedente (per vedere pratiche nel backoffice):
+- Email: `demo.richiedente@vistoeasy.local`
+- Password: valore di `BACKOFFICE_FAKE_USER_PASSWORD` (default dev: `User123!Demo`)
+
 Variabili utili:
 - `BACKOFFICE_SEED_ENABLED=true|false` (default: `true` fuori da production)
 - `BACKOFFICE_SEED_PASSWORD=...` (minimo 8 caratteri)
+- `BACKOFFICE_FAKE_PRACTICES_ENABLED=true|false` (default: `true` fuori da production)
+- `BACKOFFICE_FAKE_USER_PASSWORD=...` (minimo 8 caratteri)
 
 Il frontend include:
 - autenticazione (login/register/forgot/reset/logout/refresh)

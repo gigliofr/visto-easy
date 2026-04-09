@@ -66,11 +66,24 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
 	}
 	srv.ensureSeedBackofficeUsers()
+	srv.ensureSeedDemoPratiche()
 	return srv
 }
 
 func shouldSeedBackofficeUsers() bool {
 	enabled := strings.ToLower(strings.TrimSpace(os.Getenv("BACKOFFICE_SEED_ENABLED")))
+	if enabled == "true" || enabled == "1" || enabled == "yes" {
+		return true
+	}
+	if enabled == "false" || enabled == "0" || enabled == "no" {
+		return false
+	}
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT")))
+	return env != "production"
+}
+
+func shouldSeedDemoPratiche() bool {
+	enabled := strings.ToLower(strings.TrimSpace(os.Getenv("BACKOFFICE_FAKE_PRACTICES_ENABLED")))
 	if enabled == "true" || enabled == "1" || enabled == "yes" {
 		return true
 	}
@@ -111,6 +124,101 @@ func (s *Server) ensureSeedBackofficeUsers() {
 		}
 		if _, err := s.store.CreateUser(u); err != nil && !errors.Is(err, store.ErrAlreadyExists) {
 			log.Printf("[auth] unable to seed user %s: %v", u.Email, err)
+		}
+	}
+}
+
+func (s *Server) ensureSeedDemoPratiche() {
+	if !shouldSeedDemoPratiche() {
+		return
+	}
+
+	userPassword := strings.TrimSpace(os.Getenv("BACKOFFICE_FAKE_USER_PASSWORD"))
+	if len(userPassword) < 8 {
+		userPassword = "User123!Demo"
+	}
+
+	userHash, err := bcrypt.GenerateFromPassword([]byte(userPassword), 12)
+	if err != nil {
+		log.Printf("[seed] unable to hash BACKOFFICE_FAKE_USER_PASSWORD: %v", err)
+		return
+	}
+
+	now := time.Now().UTC()
+	demoUser, err := s.store.GetUserByEmail("demo.richiedente@vistoeasy.local")
+	if err != nil {
+		demoUser, err = s.store.CreateUser(model.Utente{
+			Email:          "demo.richiedente@vistoeasy.local",
+			Nome:           "Giulia",
+			Cognome:        "Demo",
+			Ruolo:          model.RoleRichiedente,
+			PasswordHash:   string(userHash),
+			Attivo:         true,
+			EmailVerificata: true,
+			CreatoIl:       now,
+			AggiornatoIl:   now,
+		})
+		if err != nil && !errors.Is(err, store.ErrAlreadyExists) {
+			log.Printf("[seed] unable to create demo richiedente: %v", err)
+			return
+		}
+		demoUser, _ = s.store.GetUserByEmail("demo.richiedente@vistoeasy.local")
+	}
+
+	if demoUser.ID == "" {
+		log.Printf("[seed] demo richiedente not available")
+		return
+	}
+
+	existing := s.store.ListPraticheByUser(demoUser.ID)
+	if len(existing) >= 8 {
+		return
+	}
+
+	operatorID := demoUser.ID
+	if op, err := s.store.GetUserByEmail("operatore@vistoeasy.local"); err == nil && op.ID != "" {
+		operatorID = op.ID
+	}
+
+	type def struct {
+		tipo   string
+		paese  string
+		states []model.StatoPratica
+	}
+
+	defs := []def{
+		{tipo: "TURISMO", paese: "JP", states: []model.StatoPratica{}},
+		{tipo: "LAVORO", paese: "CA", states: []model.StatoPratica{model.StatoInviata}},
+		{tipo: "STUDIO", paese: "US", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione}},
+		{tipo: "BUSINESS", paese: "AE", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoIntegrazioneRichiesta}},
+		{tipo: "TURISMO", paese: "GB", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoSospesa}},
+		{tipo: "STUDIO", paese: "AU", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata}},
+		{tipo: "BUSINESS", paese: "SG", states: []model.StatoPratica{model.StatoInviata, model.StatoRifiutata}},
+		{tipo: "LAVORO", paese: "IT", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata, model.StatoAttendePagamento, model.StatoPagamentoRicevuto, model.StatoVistoInElaborazione, model.StatoVistoEmesso, model.StatoCompletata}},
+	}
+
+	for _, d := range defs {
+		p, err := s.store.CreatePratica(model.Pratica{
+			UtenteID:       demoUser.ID,
+			TipoVisto:      d.tipo,
+			PaeseDest:      d.paese,
+			DatiAnagrafici: map[string]any{"nome": "Giulia", "cognome": "Demo"},
+			DatiPassaporto: map[string]any{"numero": "YA1234567"},
+		}, demoUser.ID)
+		if err != nil {
+			log.Printf("[seed] create pratica failed: %v", err)
+			continue
+		}
+
+		for _, next := range d.states {
+			actor := operatorID
+			if next == model.StatoInviata {
+				actor = demoUser.ID
+			}
+			if _, err := s.store.ChangePraticaState(p.ID, actor, next, "seed demo"); err != nil {
+				log.Printf("[seed] state transition failed for pratica %s -> %s: %v", p.ID, next, err)
+				break
+			}
 		}
 	}
 }

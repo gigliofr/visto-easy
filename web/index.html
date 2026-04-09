@@ -45,6 +45,17 @@
           <button class="tab" data-tab="twofa" type="button">2FA</button>
         </div>
 
+        <details class="bo-help">
+          <summary>Accesso Backoffice (demo)</summary>
+          <p>Apri <a href="/backoffice">/backoffice</a> e accedi con uno di questi account:</p>
+          <ul>
+            <li>admin@vistoeasy.local</li>
+            <li>supervisore@vistoeasy.local</li>
+            <li>operatore@vistoeasy.local</li>
+          </ul>
+          <p>Password demo: Admin123!Change (o valore BACKOFFICE_SEED_PASSWORD).</p>
+        </details>
+
         <form class="tab-pane active" data-pane="login" id="formLogin">
           <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
           <label>Password<input name="password" type="password" required minlength="8"></label>
@@ -136,6 +147,14 @@
                 </label>
                 <label>Cerca
                   <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese">
+                </label>
+                <label>Ordina per
+                  <select id="activeSortFilter" name="active_sort_filter">
+                    <option value="date_desc" selected>Piu recenti</option>
+                    <option value="date_asc">Meno recenti</option>
+                    <option value="status">Stato</option>
+                    <option value="country">Paese</option>
+                  </select>
                 </label>
               </div>
               <div id="miePratiche" class="list"></div>

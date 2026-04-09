@@ -36,6 +36,7 @@ const FINAL_PRACTICE_STATUSES = new Set(['APPROVATA', 'RIFIUTATA', 'ANNULLATA', 
 const activePracticeFilters = {
   status: 'ALL',
   query: '',
+  sort: 'date_desc',
 };
 
 function parseTs(value) {
@@ -121,10 +122,46 @@ function filterActivePractices(items) {
   });
 }
 
+function sortActivePractices(items) {
+  const mode = String(activePracticeFilters.sort || 'date_desc');
+  const rows = [...(items || [])];
+  const byDateDesc = (a, b) => parseTs(b.creato_il) - parseTs(a.creato_il);
+  const statusRank = {
+    BOZZA: 1,
+    INVIATA: 2,
+    IN_LAVORAZIONE: 3,
+    INTEGRAZIONE_RICHIESTA: 4,
+    SOSPESA: 5,
+  };
+
+  if (mode === 'date_asc') {
+    return rows.sort((a, b) => parseTs(a.creato_il) - parseTs(b.creato_il));
+  }
+  if (mode === 'status') {
+    return rows.sort((a, b) => {
+      const da = statusRank[String(a.stato || '').toUpperCase()] || 99;
+      const db = statusRank[String(b.stato || '').toUpperCase()] || 99;
+      if (da !== db) return da - db;
+      return byDateDesc(a, b);
+    });
+  }
+  if (mode === 'country') {
+    return rows.sort((a, b) => {
+      const pa = String(a.paese_dest || '').toLowerCase();
+      const pb = String(b.paese_dest || '').toLowerCase();
+      const cmp = pa.localeCompare(pb, 'it');
+      if (cmp !== 0) return cmp;
+      return byDateDesc(a, b);
+    });
+  }
+  return rows.sort(byDateDesc);
+}
+
 function wireActivePracticeFilters() {
   const statusEl = document.getElementById('activeStatusFilter');
   const queryEl = document.getElementById('activeQueryFilter');
-  if (!statusEl || !queryEl) return;
+  const sortEl = document.getElementById('activeSortFilter');
+  if (!statusEl || !queryEl || !sortEl) return;
 
   statusEl.addEventListener('change', async (ev) => {
     activePracticeFilters.status = ev.currentTarget.value || 'ALL';
@@ -133,6 +170,11 @@ function wireActivePracticeFilters() {
 
   queryEl.addEventListener('input', async (ev) => {
     activePracticeFilters.query = ev.currentTarget.value || '';
+    await loadMiePratiche();
+  });
+
+  sortEl.addEventListener('change', async (ev) => {
+    activePracticeFilters.sort = ev.currentTarget.value || 'date_desc';
     await loadMiePratiche();
   });
 }
@@ -243,8 +285,9 @@ async function loadMiePratiche(preferredPraticaID = '') {
 
   const operative = data.filter((p) => !isHistoricalPractice(p));
   const filteredOperative = filterActivePractices(operative);
+  const sortedOperative = sortActivePractices(filteredOperative);
   populateDocPraticaSelect(operative.length > 0 ? operative : data, preferredPraticaID);
-  renderList(els.miePratiche, filteredOperative, (p) => `
+  renderList(els.miePratiche, sortedOperative, (p) => `
     <article class="list-item">
       <h3>${p.codice || p.id} - ${p.stato}</h3>
       <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
@@ -302,7 +345,12 @@ async function loadMiePratiche(preferredPraticaID = '') {
     });
   });
 
-  out('Pratiche caricate', { operative: operative.length, filtrate: filteredOperative.length, storico: history.length });
+  out('Pratiche caricate', { operative: operative.length, filtrate: filteredOperative.length, storico: history.length, sort: activePracticeFilters.sort });
+}
+
+function isBackofficeRoleName(roleName) {
+  const role = String(roleName || '').toUpperCase();
+  return role === 'OPERATORE' || role === 'SUPERVISORE' || role === 'ADMIN';
 }
 
 function computeStatusBreakdown(items) {
@@ -407,7 +455,7 @@ function wireForms() {
         const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
         setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user });
         if (data.user?.ruolo === 'RICHIEDENTE') window.location.hash = '#richiedente';
-        if (data.user?.ruolo === 'BACKOFFICE') window.location.hash = '#backoffice';
+        if (isBackofficeRoleName(data.user?.ruolo)) window.location.hash = '#backoffice';
         renderSessionInfo();
         applyRoleGuards();
         out('Login completato', { user: data.user });
