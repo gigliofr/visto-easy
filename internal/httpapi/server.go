@@ -119,7 +119,11 @@ func (s *Server) ensureSeedBackofficeUsers() {
 	}
 
 	for _, u := range seeds {
-		if _, err := s.store.GetUserByEmail(u.Email); err == nil {
+		existing, err := s.store.GetUserByEmail(u.Email)
+		if err == nil {
+			if _, upErr := s.store.UpdateUserPassword(existing.ID, string(hash)); upErr != nil {
+				log.Printf("[auth] unable to update seed password for %s: %v", u.Email, upErr)
+			}
 			continue
 		}
 		if _, err := s.store.CreateUser(u); err != nil && !errors.Is(err, store.ErrAlreadyExists) {

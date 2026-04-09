@@ -803,8 +803,17 @@ function wireSessionButtons() {
 }
 
 export function initApp(bootMessage) {
-  if (window.location.pathname.toLowerCase().startsWith('/backoffice')) {
-    window.location.hash = '#backoffice';
+  const wantsBackofficePath = window.location.pathname.toLowerCase().startsWith('/backoffice');
+  let deniedBackofficeByRole = false;
+  if (wantsBackofficePath) {
+    if (hasBackofficeRole()) {
+      window.location.hash = '#backoffice';
+    } else if (state.accessToken && hasRichiedenteRole()) {
+      window.location.hash = '#richiedente';
+      deniedBackofficeByRole = true;
+    } else {
+      window.location.hash = '#auth';
+    }
   }
 
   renderSessionInfo();
@@ -816,6 +825,9 @@ export function initApp(bootMessage) {
   loadCountriesIntoSelect().catch(() => {});
   setSectionFromHash();
   applyRoleGuards();
+  if (deniedBackofficeByRole) {
+    notify('err', 'Il tuo account non ha accesso al backoffice.');
+  }
   window.addEventListener('hashchange', () => {
     setSectionFromHash();
     applyRoleGuards();
