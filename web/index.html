@@ -14,8 +14,9 @@
   <main>
     <section class="hero container">
       <p class="eyebrow">Visto Easy</p>
-      <h1>Il tuo visto, pronto a partire.</h1>
-      <p class="subtitle">Compila la richiesta, carica i documenti e segui ogni avanzamento in un flusso semplice, veloce e affidabile.</p>
+      <p class="hero-mode-title">Piattaforma visti</p>
+      <h1>Gestione pratiche senza attrito.</h1>
+      <p class="subtitle">Un unico spazio operativo per richiedenti e team backoffice.</p>
       <div class="flow-nav">
         <a class="btn btn-solid" href="#auth">Inizia ora</a>
         <a class="btn btn-ghost" href="#richiedente">Area Richiedente</a>
@@ -39,7 +40,7 @@
           <h2>Autenticazione</h2>
           <p>Accedi con email e password.</p>
         </div>
-        <div class="auth-mobile-switch" id="authMobileSwitch" role="tablist" aria-label="Azioni autenticazione">
+        <div class="auth-mobile-switch nav nav-tabs" id="authMobileSwitch" role="tablist" aria-label="Azioni autenticazione">
           <button type="button" class="tab active" data-auth-view="login">Login</button>
           <button type="button" class="tab" data-auth-view="register">Crea account</button>
           <button type="button" class="tab" data-auth-view="recovery">Recupero</button>
@@ -83,24 +84,99 @@
         <div class="panel-head">
           <h2>Impostazioni</h2>
           <p>Profilo, sicurezza e secondo fattore disponibili dopo l'accesso.</p>
+          <button class="btn btn-ghost" id="btnSettingsBack" type="button">Torna alla dashboard</button>
         </div>
         <div class="settings-grid">
-          <section class="surface-block">
-            <h3 class="section-title">Profilo e sicurezza</h3>
-            <p class="helper-text">Gestisci il secondo fattore (2FA) dal tuo profilo.</p>
-            <div class="inline-actions">
-              <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+          <div class="settings-shell bo-tabs-layout">
+            <nav class="bo-tabs-nav settings-tabs-nav" role="tablist" aria-label="Sezioni impostazioni">
+              <button class="nav-link active" type="button" role="tab" aria-selected="true" data-settings-tab="sicurezza">
+                <span>Sicurezza</span>
+                <span class="bo-tab-subtitle">2FA e accesso account</span>
+              </button>
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-settings-tab="account">
+                <span>Account</span>
+                <span class="bo-tab-subtitle">Dati sessione corrente</span>
+              </button>
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-settings-tab="supporto">
+                <span>Supporto</span>
+                <span class="bo-tab-subtitle">Indicazioni operative</span>
+              </button>
+            </nav>
+
+            <div class="bo-tabs-content settings-tabs-content">
+              <section class="tab-pane show active settings-panel" role="tabpanel" data-settings-panel="sicurezza">
+                <section class="surface-block">
+                  <h3 class="section-title">Profilo e sicurezza</h3>
+                  <p class="helper-text">Gestisci il secondo fattore (2FA) dal tuo profilo.</p>
+                  <div class="settings-security-strip">
+                    <article class="bo-detail-card">
+                      <h4>Stato 2FA</h4>
+                      <p><span id="settings2FAStatus" class="settings-pill settings-pill--warn">Non attivo</span></p>
+                      <p id="settings2FAHint" class="helper-text">Il secondo fattore non e ancora abilitato su questo account.</p>
+                    </article>
+                  </div>
+                  <article class="settings-callout settings-callout--info" aria-label="Suggerimenti sicurezza 2FA">
+                    <h4>Best practice 2FA</h4>
+                    <ul class="settings-callout-list">
+                      <li>Conserva i codici di recupero in un luogo sicuro.</li>
+                      <li>Non condividere mai codici OTP via email o chat.</li>
+                      <li>Dopo attivazione, verifica un accesso completo con 2FA.</li>
+                    </ul>
+                  </article>
+                  <div class="inline-actions">
+                    <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+                  </div>
+                  <form id="form2FAEnable" class="inline-form">
+                    <label>Codice da app autenticatore<input name="code" type="text" required></label>
+                    <button class="btn btn-solid" type="submit">Attiva 2FA</button>
+                  </form>
+                  <form id="form2FADisable" class="inline-form">
+                    <label>Codice corrente<input name="code" type="text" required></label>
+                    <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
+                  </form>
+                  <pre id="twofaOutput" class="mono-box"></pre>
+                </section>
+              </section>
+
+              <section class="tab-pane hidden settings-panel" role="tabpanel" data-settings-panel="account" hidden>
+                <section class="surface-block">
+                  <h3 class="section-title">Panoramica account</h3>
+                  <p class="helper-text">Riepilogo del profilo attivo e delle azioni rapide disponibili.</p>
+                  <div class="settings-info-grid">
+                    <article class="bo-detail-card">
+                      <h4>Ruolo corrente</h4>
+                      <p id="settingsRoleValue">-</p>
+                    </article>
+                    <article class="bo-detail-card">
+                      <h4>Email utente</h4>
+                      <p id="settingsUserValue">-</p>
+                    </article>
+                  </div>
+                </section>
+              </section>
+
+              <section class="tab-pane hidden settings-panel" role="tabpanel" data-settings-panel="supporto" hidden>
+                <section class="surface-block">
+                  <h3 class="section-title">Supporto operativo</h3>
+                  <p class="helper-text">Linee guida rapide per lavorare con pratiche e documenti.</p>
+                  <ol class="settings-guide-list">
+                    <li class="settings-guide-item">
+                      <h4>Controlla il carico pratiche</h4>
+                      <p>Usa la dashboard backoffice per monitorare priorita, assegnazioni e scadenze operative.</p>
+                    </li>
+                    <li class="settings-guide-item">
+                      <h4>Lavora dalla pratica selezionata</h4>
+                      <p>Dal dettaglio puoi aggiungere note interne, richiedere documenti e gestire il flusso stato.</p>
+                    </li>
+                    <li class="settings-guide-item">
+                      <h4>Verifica disponibilita download</h4>
+                      <p>Il download documento e attivo quando lo storage e configurato correttamente.</p>
+                    </li>
+                  </ol>
+                </section>
+              </section>
             </div>
-            <form id="form2FAEnable" class="inline-form">
-              <label>Codice da app autenticatore<input name="code" type="text" required></label>
-              <button class="btn btn-solid" type="submit">Attiva 2FA</button>
-            </form>
-            <form id="form2FADisable" class="inline-form">
-              <label>Codice corrente<input name="code" type="text" required></label>
-              <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
-            </form>
-            <pre id="twofaOutput" class="mono-box"></pre>
-          </section>
+          </div>
         </div>
       </article>
 
@@ -207,95 +283,224 @@
       <article class="panel hidden" id="backoffice">
         <div class="panel-head">
           <h2>Backoffice</h2>
-          <p>Tabella pratiche, stato lavorazione e assegnazione singola addetto.</p>
-        </div>
-        <div id="boKpi" class="kpi-grid">
-          <article class="kpi"><h3>Pratiche</h3><p id="kpiPratiche">-</p></article>
-          <article class="kpi"><h3>Utenti</h3><p id="kpiUtenti">-</p></article>
-          <article class="kpi"><h3>Audit</h3><p id="kpiAudit">-</p></article>
-        </div>
-
-        <div class="bo-shell">
-          <div class="bo-toolbar surface-block">
-            <div class="bo-scope" role="tablist" aria-label="Filtro pratiche backoffice">
-              <button class="tab active" type="button" data-bo-scope="mine">Le mie</button>
-              <button class="tab" type="button" data-bo-scope="all">Tutte</button>
-              <button class="tab" type="button" data-bo-scope="new">Nuove</button>
-            </div>
-            <form id="formBOFilters" class="inline-form bo-filter-grid">
-              <label>Ricerca<input name="q" type="text" placeholder="codice, email, note"></label>
-              <label>Stato<select name="stato"><option value="">Tutti</option><option value="BOZZA">Bozza</option><option value="INVIATA">Inviata</option><option value="IN_LAVORAZIONE">In lavorazione</option><option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option><option value="SOSPESA">Sospesa</option><option value="APPROVATA">Approvata</option><option value="RIFIUTATA">Rifiutata</option><option value="ATTENDE_PAGAMENTO">Attende pagamento</option><option value="PAGAMENTO_RICEVUTO">Pagamento ricevuto</option><option value="VISTO_IN_ELABORAZIONE">Visto in elaborazione</option><option value="VISTO_EMESSO">Visto emesso</option><option value="COMPLETATA">Completata</option></select></label>
-              <label>Priorità<select name="priorita"><option value="">Tutte</option><option value="NORMALE">Normale</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></label>
-              <label>Paese<input name="paese_dest" type="text" placeholder="JP"></label>
-              <label>Tipo visto<input name="tipo_visto" type="text" placeholder="TURISMO"></label>
-              <button class="btn btn-solid" type="submit">Applica filtri</button>
-            </form>
+          <p>Seleziona una sezione dai tab: la vista pratiche resta ampia e leggibile.</p>
+          <div class="bo-session-strip" id="boSessionStrip">
+            <span id="boSessionRole">Ruolo: ospite</span>
+            <span id="boSessionUser">Utente: non autenticato</span>
+            <button class="btn btn-ghost" id="boBtnSettings" type="button" hidden>Impostazioni</button>
+            <button class="btn btn-solid" id="boBtnLogout" type="button" hidden>Esci</button>
           </div>
+        </div>
+        <div class="bo-tabs-layout">
+          <ul class="nav nav-tabs bo-icon-tabs" role="tablist" aria-label="Menu backoffice">
+            <li class="nav-item">
+              <a id="bo-panel-pratiche-tab" class="nav-link active" href="#bo-panel-pratiche" role="tab" aria-controls="bo-panel-pratiche" aria-selected="true" data-bo-tab="pratiche" title="Pratiche">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="4" width="14" height="16" rx="2"/>
+                  <path d="M9 8h6M9 12h6M9 16h4"/>
+                </svg>
+                <span class="bo-tab-label">Pratiche</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a id="bo-panel-utenti-tab" class="nav-link" href="#bo-panel-utenti" role="tab" aria-controls="bo-panel-utenti" aria-selected="false" data-bo-tab="utenti" title="Utenti">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="9" cy="8" r="3"/>
+                  <path d="M4 18a5 5 0 0 1 10 0"/>
+                  <circle cx="17" cy="9" r="2"/>
+                  <path d="M14.5 18a3.5 3.5 0 0 1 5.5-2.8"/>
+                </svg>
+                <span class="bo-tab-label">Utenti</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a id="bo-panel-audit-tab" class="nav-link" href="#bo-panel-audit" role="tab" aria-controls="bo-panel-audit" aria-selected="false" data-bo-tab="audit" title="Audit">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 3 5 6v6c0 4.5 2.8 7.7 7 9 4.2-1.3 7-4.5 7-9V6l-7-3z"/>
+                  <path d="m9.3 12 1.8 1.8 3.6-3.6"/>
+                </svg>
+                <span class="bo-tab-label">Audit</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a id="bo-panel-operazioni-tab" class="nav-link" href="#bo-panel-operazioni" role="tab" aria-controls="bo-panel-operazioni" aria-selected="false" data-bo-tab="operazioni" title="Operazioni">
+                <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14.5 6.5 17.5 9.5"/>
+                  <path d="m10 8 6 6"/>
+                  <path d="m4 20 4.5-1 8.7-8.7a1.8 1.8 0 0 0 0-2.6l-.9-.9a1.8 1.8 0 0 0-2.6 0L5 15.5 4 20z"/>
+                </svg>
+                <span class="bo-tab-label">Operazioni</span>
+              </a>
+            </li>
+          </ul>
 
-          <div class="bo-grid">
-            <section class="surface-block bo-list-pane">
-              <div class="toolbar">
-                <button class="btn btn-ghost" id="btnLoadUsers" type="button">Carica utenti</button>
-                <button class="btn btn-ghost" id="btnLoadAudit" type="button">Carica audit</button>
+          <div class="tab-content bo-tabs-content">
+            <section class="tab-pane fade show active" id="bo-panel-pratiche" role="tabpanel" aria-labelledby="bo-panel-pratiche-tab" data-bo-panel="pratiche">
+              <div id="boKpi" class="kpi-grid bo-kpi-grid">
+                <article class="kpi"><h3>Pratiche</h3><p id="kpiPratiche">-</p></article>
+                <article class="kpi"><h3>Utenti</h3><p id="kpiUtenti">-</p></article>
+                <article class="kpi"><h3>Audit</h3><p id="kpiAudit">-</p></article>
               </div>
-              <h3 class="section-title">Nuove pratiche da assegnare</h3>
-              <div id="boNewPratiche" class="bo-cards"></div>
-              <h3 class="section-title">Tutte le pratiche</h3>
-              <div id="boPratiche" class="bo-table-wrap"></div>
+              <div class="surface-block bo-toolbar-panel">
+                <p class="bo-control-caption">Ambito pratiche</p>
+                <div class="bo-scope nav nav-tabs auto" role="tablist" aria-label="Filtro pratiche backoffice">
+                  <button class="tab active" type="button" data-bo-scope="mine">Le mie</button>
+                  <button class="tab" type="button" data-bo-scope="all">Tutte</button>
+                </div>
+                <form id="formBOFilters" class="inline-form bo-filter-grid">
+                  <div class="bo-filter-compact-row">
+                    <label>Ricerca<input name="q" type="text" placeholder="codice, email, note"></label>
+                    <button class="btn btn-ghost" type="button" id="btnBOToggleAdvancedFilters" aria-expanded="false" aria-controls="boAdvancedFilters">Filtri avanzati</button>
+                    <button class="btn btn-solid" type="submit">Applica filtri</button>
+                  </div>
+                  <div id="boAdvancedFilters" class="bo-advanced-filters hidden" hidden>
+                    <label>Stato<select name="stato"><option value="">Tutti</option><option value="BOZZA">Bozza</option><option value="INVIATA">Inviata</option><option value="IN_LAVORAZIONE">In lavorazione</option><option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option><option value="SOSPESA">Sospesa</option><option value="APPROVATA">Approvata</option><option value="RIFIUTATA">Rifiutata</option><option value="ATTENDE_PAGAMENTO">Attende pagamento</option><option value="PAGAMENTO_RICEVUTO">Pagamento ricevuto</option><option value="VISTO_IN_ELABORAZIONE">Visto in elaborazione</option><option value="VISTO_EMESSO">Visto emesso</option><option value="COMPLETATA">Completata</option></select></label>
+                    <label>Priorità<select name="priorita"><option value="">Tutte</option><option value="NORMALE">Normale</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></label>
+                    <label>Paese<input name="paese_dest" type="text" placeholder="JP"></label>
+                    <label>Tipo visto<input name="tipo_visto" type="text" placeholder="TURISMO"></label>
+                  </div>
+                </form>
+              </div>
+              <div class="bo-pratiche-shell">
+                <p class="bo-control-caption">Vista contenuto</p>
+                <ul class="nav nav-tabs bo-pratiche-tabs" role="tablist" aria-label="Viste pratiche">
+                  <li class="nav-item">
+                    <button class="nav-link" type="button" role="tab" aria-selected="false" data-bo-pratiche-view="new">Nuove pratiche</button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link active" type="button" role="tab" aria-selected="true" data-bo-pratiche-view="all">Tutte le pratiche</button>
+                  </li>
+                </ul>
+
+                <section class="surface-block bo-pratiche-panel hidden" data-bo-pratiche-panel="new" hidden>
+                  <h3 class="section-title">Nuove pratiche da assegnare</h3>
+                  <div id="boNewPratiche" class="bo-cards"></div>
+                </section>
+
+                <section class="surface-block bo-pratiche-panel" data-bo-pratiche-panel="all">
+                  <h3 class="section-title">Tutte le pratiche</h3>
+                  <div class="bo-table-controls" id="boTableControls">
+                    <label>Righe per pagina
+                      <select id="boPageSize" name="bo_page_size">
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="30">30</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                      </select>
+                    </label>
+                    <div class="bo-pagination" id="boPagination"></div>
+                  </div>
+                  <div id="boPratiche" class="bo-table-wrap"></div>
+                </section>
+
+                <aside class="surface-block bo-detail-pane hidden" id="boPraticaDetail"></aside>
+              </div>
             </section>
 
-            <aside class="surface-block bo-detail-pane hidden" id="boPraticaDetail"></aside>
-          </div>
+            <section class="tab-pane fade" id="bo-panel-utenti" role="tabpanel" aria-labelledby="bo-panel-utenti-tab" data-bo-panel="utenti" hidden>
+              <div class="surface-block">
+                <div class="toolbar">
+                  <button class="btn btn-ghost" id="btnLoadUsers" type="button">Aggiorna utenti</button>
+                </div>
 
-          <details class="bo-secondary-ops">
-            <summary>Operazioni avanzate</summary>
-            <div class="bo-secondary-grid">
-              <div>
-                <div id="boUtenti" class="list compact"></div>
+                <ul class="nav nav-tabs bo-users-tabs" role="tablist" aria-label="Viste utenti">
+                  <li class="nav-item">
+                    <button class="nav-link active" type="button" role="tab" aria-selected="true" data-bo-users-view="clienti">Clienti</button>
+                  </li>
+                  <li class="nav-item">
+                    <button class="nav-link" type="button" role="tab" aria-selected="false" data-bo-users-view="operatori">Operatori</button>
+                  </li>
+                </ul>
+
+                <section class="bo-users-panel" data-bo-users-panel="clienti">
+                  <h3 class="section-title">Clienti</h3>
+                  <div id="boUtentiClienti" class="list compact"></div>
+                </section>
+
+                <section class="bo-users-panel hidden" data-bo-users-panel="operatori" hidden>
+                  <h3 class="section-title">Operatori</h3>
+                  <form id="formBOInviteOperator" class="inline-form bo-invite-form">
+                    <label>Email operatore<input name="email" type="email" required placeholder="nome.cognome@azienda.it"></label>
+                    <label>Nome<input name="nome" type="text" required></label>
+                    <label>Cognome<input name="cognome" type="text" required></label>
+                    <button class="btn btn-solid" type="submit">Invita operatore</button>
+                  </form>
+                  <div id="boInviteOperatorOutput" class="mono-box bo-invite-output"></div>
+                  <div class="bo-pending-invites" id="boPendingInvites">
+                    <h4>Inviti pendenti</h4>
+                    <div id="boUtentiOperatoriPending" class="list compact"></div>
+                  </div>
+                  <div id="boUtentiOperatori" class="list compact"></div>
+                </section>
+              </div>
+            </section>
+
+            <section class="tab-pane fade" id="bo-panel-audit" role="tabpanel" aria-labelledby="bo-panel-audit-tab" data-bo-panel="audit" hidden>
+              <div class="surface-block">
+                <div class="toolbar">
+                  <button class="btn btn-ghost" id="btnLoadAudit" type="button">Aggiorna audit</button>
+                </div>
                 <div id="boAudit" class="list compact"></div>
               </div>
-              <div class="bo-ops">
-                <form id="formBOChangeState" class="inline-form">
-                  <label>Pratica ID<input name="id" type="text" required></label>
-                  <label>Nuovo stato<input name="stato" type="text" required placeholder="IN_LAVORAZIONE"></label>
-                  <label>Nota<input name="nota" type="text" placeholder="aggiornamento"></label>
-                  <button class="btn btn-solid" type="submit">Cambia stato</button>
-                </form>
+            </section>
 
-                <form id="formBOAddNote" class="inline-form">
-                  <label>Pratica ID<input name="id" type="text" required></label>
-                  <label>Messaggio<input name="messaggio" type="text" required></label>
-                  <label>Interna
-                    <select name="interna">
-                      <option value="true">true</option>
-                      <option value="false">false</option>
-                    </select>
-                  </label>
-                  <button class="btn btn-ghost" type="submit">Aggiungi nota</button>
-                </form>
+            <section class="tab-pane fade" id="bo-panel-operazioni" role="tabpanel" aria-labelledby="bo-panel-operazioni-tab" data-bo-panel="operazioni" hidden>
+              <div class="surface-block bo-ops-shell">
+                <div class="bo-ops-menu nav nav-tabs auto" id="boOpsMenu" role="tablist" aria-label="Operazioni backoffice">
+                  <button class="tab active" type="button" data-bo-op="state">Stato</button>
+                  <button class="tab" type="button" data-bo-op="note">Nota</button>
+                  <button class="tab" type="button" data-bo-op="assign">Assegna</button>
+                  <button class="tab" type="button" data-bo-op="doc">Documento</button>
+                  <button class="tab" type="button" data-bo-op="payment">Pagamento</button>
+                </div>
+                <div class="bo-ops-panels">
+                  <form id="formBOChangeState" class="inline-form bo-ops-panel" data-bo-op-panel="state">
+                    <label>Pratica ID<input name="id" type="text" required></label>
+                    <label>Nuovo stato<input name="stato" type="text" required placeholder="IN_LAVORAZIONE"></label>
+                    <label>Nota<input name="nota" type="text" placeholder="aggiornamento"></label>
+                    <button class="btn btn-solid" type="submit">Cambia stato</button>
+                  </form>
 
-                <form id="formBOAssign" class="inline-form">
-                  <label>Pratica ID<input name="id" type="text" required></label>
-                  <label>Operatore ID<input name="operatore_id" type="text" required></label>
-                  <button class="btn btn-ghost" type="submit">Assegna operatore</button>
-                </form>
+                  <form id="formBOAddNote" class="inline-form bo-ops-panel hidden" data-bo-op-panel="note">
+                    <label>Pratica ID<input name="id" type="text" required></label>
+                    <label>Messaggio<input name="messaggio" type="text" required></label>
+                    <label>Interna
+                      <select name="interna">
+                        <option value="true">true</option>
+                        <option value="false">false</option>
+                      </select>
+                    </label>
+                    <button class="btn btn-ghost" type="submit">Aggiungi nota</button>
+                  </form>
 
-                <form id="formBORequestDoc" class="inline-form">
-                  <label>Pratica ID<input name="id" type="text" required></label>
-                  <label>Documento<input name="documento" type="text" required placeholder="PASSAPORTO"></label>
-                  <label>Nota<input name="nota" type="text" placeholder="allega documento leggibile"></label>
-                  <button class="btn btn-ghost" type="submit">Richiedi documento</button>
-                </form>
+                  <form id="formBOAssign" class="inline-form bo-ops-panel hidden" data-bo-op-panel="assign">
+                    <label>Pratica ID<input name="id" type="text" required></label>
+                    <label>Operatore
+                      <select name="operatore_id" id="boAssignOperatorSelect" required>
+                        <option value="" selected disabled>Seleziona operatore disponibile</option>
+                      </select>
+                    </label>
+                    <button class="btn btn-ghost" type="submit">Assegna operatore</button>
+                  </form>
 
-                <form id="formBOPaymentLink" class="inline-form">
-                  <label>Pratica ID<input name="id" type="text" required></label>
-                  <label>Importo<input name="importo" type="number" required value="50"></label>
-                  <label>Provider<input name="provider" type="text" value="stripe"></label>
-                  <button class="btn btn-solid" type="submit">Crea link pagamento</button>
-                </form>
+                  <form id="formBORequestDoc" class="inline-form bo-ops-panel hidden" data-bo-op-panel="doc">
+                    <label>Pratica ID<input name="id" type="text" required></label>
+                    <label>Documento<input name="documento" type="text" required placeholder="PASSAPORTO"></label>
+                    <label>Nota<input name="nota" type="text" placeholder="allega documento leggibile"></label>
+                    <button class="btn btn-ghost" type="submit">Richiedi documento</button>
+                  </form>
+
+                  <form id="formBOPaymentLink" class="inline-form bo-ops-panel hidden" data-bo-op-panel="payment">
+                    <label>Pratica ID<input name="id" type="text" required></label>
+                    <label>Importo<input name="importo" type="number" required value="50"></label>
+                    <label>Provider<input name="provider" type="text" value="stripe"></label>
+                    <button class="btn btn-solid" type="submit">Crea link pagamento</button>
+                  </form>
+                </div>
               </div>
-            </div>
-          </details>
+            </section>
+          </div>
         </div>
       </article>
     </section>

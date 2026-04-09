@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"strconv"
@@ -21,14 +22,24 @@ type UploadSession struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+type DownloadSession struct {
+	DownloadURL string    `json:"download_url"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
 type PresignService interface {
 	PresignDocumentUpload(praticaID, fileName, contentType string, size int64) (UploadSession, error)
+	PresignDocumentDownload(key, fileName string) (DownloadSession, error)
 }
 
 type disabledPresigner struct{}
 
 func (d disabledPresigner) PresignDocumentUpload(_, _, _ string, _ int64) (UploadSession, error) {
 	return UploadSession{}, errors.New("storage presign not configured")
+}
+
+func (d disabledPresigner) PresignDocumentDownload(_, _ string) (DownloadSession, error) {
+	return DownloadSession{}, errors.New("storage presign not configured")
 }
 
 type MinioPresigner struct {
@@ -91,6 +102,22 @@ func (m *MinioPresigner) PresignDocumentUpload(praticaID, fileName, contentType 
 		return UploadSession{}, fmt.Errorf("presign failed: %w", err)
 	}
 	return UploadSession{Key: key, UploadURL: url.String(), ExpiresAt: time.Now().UTC().Add(m.expires)}, nil
+}
+
+func (m *MinioPresigner) PresignDocumentDownload(key, fileName string) (DownloadSession, error) {
+	if strings.TrimSpace(key) == "" {
+		return DownloadSession{}, errors.New("document key is required")
+	}
+	opts := make(url.Values)
+	if safe := sanitizeFileName(fileName); safe != "" {
+		opts.Set("response-content-disposition", fmt.Sprintf("attachment; filename=\"%s\"", safe))
+	}
+
+	url, err := m.client.PresignedGetObject(context.Background(), m.bucket, key, m.expires, opts)
+	if err != nil {
+		return DownloadSession{}, fmt.Errorf("presign download failed: %w", err)
+	}
+	return DownloadSession{DownloadURL: url.String(), ExpiresAt: time.Now().UTC().Add(m.expires)}, nil
 }
 
 func sanitizeFileName(name string) string {

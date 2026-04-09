@@ -8,28 +8,28 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/bcrypt"
 
 	"visto-easy/internal/model"
 )
 
 type MongoStore struct {
-	client     *mongo.Client
-	db         *mongo.Database
-	users      *mongo.Collection
-	pratiche   *mongo.Collection
-	pagamenti  *mongo.Collection
-	refreshSessions *mongo.Collection
+	client              *mongo.Client
+	db                  *mongo.Database
+	users               *mongo.Collection
+	pratiche            *mongo.Collection
+	pagamenti           *mongo.Collection
+	refreshSessions     *mongo.Collection
 	passwordResetTokens *mongo.Collection
-	webhooks   *mongo.Collection
-	blockedIPs *mongo.Collection
-	allowedIPs *mongo.Collection
-	securityEvents *mongo.Collection
-	auditEvents *mongo.Collection
-	counters   *mongo.Collection
+	webhooks            *mongo.Collection
+	blockedIPs          *mongo.Collection
+	allowedIPs          *mongo.Collection
+	securityEvents      *mongo.Collection
+	auditEvents         *mongo.Collection
+	counters            *mongo.Collection
 }
 
 func NewMongoStore(uri, dbName string) (*MongoStore, error) {
@@ -46,19 +46,19 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 
 	db := client.Database(dbName)
 	s := &MongoStore{
-		client:    client,
-		db:        db,
-		users:     db.Collection("utenti"),
-		pratiche:  db.Collection("pratiche"),
-		pagamenti: db.Collection("pagamenti"),
-		refreshSessions: db.Collection("refresh_sessions"),
+		client:              client,
+		db:                  db,
+		users:               db.Collection("utenti"),
+		pratiche:            db.Collection("pratiche"),
+		pagamenti:           db.Collection("pagamenti"),
+		refreshSessions:     db.Collection("refresh_sessions"),
 		passwordResetTokens: db.Collection("password_reset_tokens"),
-		webhooks:  db.Collection("webhook_events"),
-		blockedIPs: db.Collection("blocked_ips"),
-		allowedIPs: db.Collection("allowed_ips"),
-		securityEvents: db.Collection("security_events"),
-		auditEvents: db.Collection("audit_events"),
-		counters:  db.Collection("counters"),
+		webhooks:            db.Collection("webhook_events"),
+		blockedIPs:          db.Collection("blocked_ips"),
+		allowedIPs:          db.Collection("allowed_ips"),
+		securityEvents:      db.Collection("security_events"),
+		auditEvents:         db.Collection("audit_events"),
+		counters:            db.Collection("counters"),
 	}
 	if err := s.ensureIndexes(context.Background()); err != nil {
 		return nil, err
@@ -316,7 +316,9 @@ func (s *MongoStore) CreatePratica(p model.Pratica, actorID string) (model.Prati
 	p.ID = uuid.NewString()
 	p.Codice = fmt.Sprintf("VST-%d-%06d", now.Year(), seq)
 	p.Stato = model.StatoBozza
-	p.Priorita = model.PrioritaNormale
+	if p.Priorita == "" {
+		p.Priorita = model.PrioritaNormale
+	}
 	p.Valuta = "EUR"
 	p.CreatoIl = now
 	p.AggiornatoIl = now
@@ -385,10 +387,18 @@ func (s *MongoStore) UpdatePraticaAsDraft(id, userID string, data map[string]any
 	if p.UtenteID != userID || p.Stato != model.StatoBozza {
 		return model.Pratica{}, ErrForbiddenState
 	}
-	if v, ok := data["tipo_visto"].(string); ok && strings.TrimSpace(v) != "" { p.TipoVisto = v }
-	if v, ok := data["paese_dest"].(string); ok && strings.TrimSpace(v) != "" { p.PaeseDest = v }
-	if v, ok := data["dati_anagrafici"].(map[string]any); ok { p.DatiAnagrafici = v }
-	if v, ok := data["dati_passaporto"].(map[string]any); ok { p.DatiPassaporto = v }
+	if v, ok := data["tipo_visto"].(string); ok && strings.TrimSpace(v) != "" {
+		p.TipoVisto = v
+	}
+	if v, ok := data["paese_dest"].(string); ok && strings.TrimSpace(v) != "" {
+		p.PaeseDest = v
+	}
+	if v, ok := data["dati_anagrafici"].(map[string]any); ok {
+		p.DatiAnagrafici = v
+	}
+	if v, ok := data["dati_passaporto"].(map[string]any); ok {
+		p.DatiPassaporto = v
+	}
 	p.AggiornatoIl = time.Now().UTC()
 
 	ctx, cancel := s.ctx()
@@ -436,8 +446,12 @@ func (s *MongoStore) ChangePraticaState(id string, fromActor string, next model.
 	evt := model.EventoPratica{ID: uuid.NewString(), PraticaID: id, AttoreID: fromActor, TipoEvento: "STATO_CAMBIATO", DaStato: p.Stato, AStato: next, Messaggio: note, CreatoIl: now}
 	p.Stato = next
 	p.AggiornatoIl = now
-	if next == model.StatoInviata { p.InviatoIl = &now }
-	if next == model.StatoCompletata { p.CompletatoIl = &now }
+	if next == model.StatoInviata {
+		p.InviatoIl = &now
+	}
+	if next == model.StatoCompletata {
+		p.CompletatoIl = &now
+	}
 	p.Eventi = append(p.Eventi, evt)
 
 	ctx, cancel := s.ctx()

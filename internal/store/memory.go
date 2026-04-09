@@ -22,38 +22,42 @@ var (
 )
 
 type MemoryStore struct {
-	mu        sync.RWMutex
-	users     map[string]model.Utente
-	pratiche  map[string]model.Pratica
-	payments  map[string]model.Pagamento
-	webhooks  map[string]time.Time
-	refreshSessions map[string]model.RefreshSession
+	mu                  sync.RWMutex
+	users               map[string]model.Utente
+	pratiche            map[string]model.Pratica
+	payments            map[string]model.Pagamento
+	webhooks            map[string]time.Time
+	refreshSessions     map[string]model.RefreshSession
 	passwordResetTokens map[string]model.PasswordResetToken
-	blockedIPs map[string]model.BlockedIP
-	allowedIPs map[string]model.AllowedIP
-	securityEvents []model.SecurityEvent
-	auditEvents []model.AuditEvent
-	byEmail   map[string]string
-	counters  map[string]*atomic.Uint64
+	blockedIPs          map[string]model.BlockedIP
+	allowedIPs          map[string]model.AllowedIP
+	securityEvents      []model.SecurityEvent
+	auditEvents         []model.AuditEvent
+	byEmail             map[string]string
+	counters            map[string]*atomic.Uint64
 }
 
 func NewMemoryStore() *MemoryStore {
 	s := &MemoryStore{
-		users:    make(map[string]model.Utente),
-		pratiche: make(map[string]model.Pratica),
-		payments: make(map[string]model.Pagamento),
-		webhooks: make(map[string]time.Time),
-		refreshSessions: make(map[string]model.RefreshSession),
+		users:               make(map[string]model.Utente),
+		pratiche:            make(map[string]model.Pratica),
+		payments:            make(map[string]model.Pagamento),
+		webhooks:            make(map[string]time.Time),
+		refreshSessions:     make(map[string]model.RefreshSession),
 		passwordResetTokens: make(map[string]model.PasswordResetToken),
-		blockedIPs: make(map[string]model.BlockedIP),
-		allowedIPs: make(map[string]model.AllowedIP),
-		securityEvents: make([]model.SecurityEvent, 0, 128),
-		auditEvents: make([]model.AuditEvent, 0, 256),
-		byEmail:  make(map[string]string),
-		counters: map[string]*atomic.Uint64{"pratica": {}},
+		blockedIPs:          make(map[string]model.BlockedIP),
+		allowedIPs:          make(map[string]model.AllowedIP),
+		securityEvents:      make([]model.SecurityEvent, 0, 128),
+		auditEvents:         make([]model.AuditEvent, 0, 256),
+		byEmail:             make(map[string]string),
+		counters:            map[string]*atomic.Uint64{"pratica": {}},
 	}
 	s.seedBackofficeUsers()
 	return s
+}
+
+func (s *MemoryStore) Close() error {
+	return nil
 }
 
 func (s *MemoryStore) seedBackofficeUsers() {
@@ -87,6 +91,17 @@ func (s *MemoryStore) CreateUser(u model.Utente) (model.Utente, error) {
 	s.users[u.ID] = u
 	s.byEmail[emailKey] = u.ID
 	return u, nil
+}
+
+func (s *MemoryStore) ListUsers() []model.Utente {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]model.Utente, 0, len(s.users))
+	for _, u := range s.users {
+		out = append(out, u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatoIl.After(out[j].CreatoIl) })
+	return out
 }
 
 func (s *MemoryStore) GetUserByEmail(email string) (model.Utente, error) {
@@ -145,7 +160,9 @@ func (s *MemoryStore) CreatePratica(p model.Pratica, actorID string) (model.Prat
 	p.ID = uuid.NewString()
 	p.Codice = fmt.Sprintf("VST-%d-%06d", now.Year(), seq)
 	p.Stato = model.StatoBozza
-	p.Priorita = model.PrioritaNormale
+	if p.Priorita == "" {
+		p.Priorita = model.PrioritaNormale
+	}
 	p.Valuta = "EUR"
 	p.CreatoIl = now
 	p.AggiornatoIl = now
@@ -204,57 +221,93 @@ func (s *MemoryStore) UpdatePraticaAsDraft(id, userID string, data map[string]an
 	if p.Stato != model.StatoBozza {
 		return model.Pratica{}, ErrForbiddenState
 	}
-	if v, ok := data["tipo_visto"].(string); ok && strings.TrimSpace(v) != "" { p.TipoVisto = v }
-	if v, ok := data["paese_dest"].(string); ok && strings.TrimSpace(v) != "" { p.PaeseDest = v }
-	if v, ok := data["dati_anagrafici"].(map[string]any); ok { p.DatiAnagrafici = v }
-	if v, ok := data["dati_passaporto"].(map[string]any); ok { p.DatiPassaporto = v }
+	if v, ok := data["tipo_visto"].(string); ok && strings.TrimSpace(v) != "" {
+		p.TipoVisto = v
+	}
+	if v, ok := data["paese_dest"].(string); ok && strings.TrimSpace(v) != "" {
+		p.PaeseDest = v
+	}
+	if v, ok := data["dati_anagrafici"].(map[string]any); ok {
+		p.DatiAnagrafici = v
+	}
+	if v, ok := data["dati_passaporto"].(map[string]any); ok {
+		p.DatiPassaporto = v
+	}
 	p.AggiornatoIl = time.Now().UTC()
 	s.pratiche[id] = p
 	return p, nil
 }
 
 func (s *MemoryStore) DeletePraticaAsDraft(id, userID string) error {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.pratiche[id]
-	if !ok { return ErrNotFound }
-	if p.UtenteID != userID || p.Stato != model.StatoBozza { return ErrForbiddenState }
+	if !ok {
+		return ErrNotFound
+	}
+	if p.UtenteID != userID || p.Stato != model.StatoBozza {
+		return ErrForbiddenState
+	}
 	delete(s.pratiche, id)
 	return nil
 }
 
+func (s *MemoryStore) SubmitPratica(id, userID string) (model.Pratica, error) {
+	p, err := s.GetPratica(id)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	if p.UtenteID != userID || p.Stato != model.StatoBozza {
+		return model.Pratica{}, ErrForbiddenState
+	}
+	return s.ChangePraticaState(id, userID, model.StatoInviata, "pratica inviata dal richiedente")
+}
+
 var allowedTransitions = map[model.StatoPratica]map[model.StatoPratica]bool{
-	model.StatoBozza: {model.StatoAnnullata: true, model.StatoInviata: true},
-	model.StatoInviata: {model.StatoInLavorazione: true, model.StatoRifiutata: true},
-	model.StatoInLavorazione: {model.StatoSospesa: true, model.StatoIntegrazioneRichiesta: true, model.StatoApprovata: true, model.StatoRifiutata: true},
+	model.StatoBozza:                 {model.StatoAnnullata: true, model.StatoInviata: true},
+	model.StatoInviata:               {model.StatoInLavorazione: true, model.StatoRifiutata: true},
+	model.StatoInLavorazione:         {model.StatoSospesa: true, model.StatoIntegrazioneRichiesta: true, model.StatoApprovata: true, model.StatoRifiutata: true},
 	model.StatoIntegrazioneRichiesta: {model.StatoApprovata: true, model.StatoInLavorazione: true},
-	model.StatoSospesa: {model.StatoInLavorazione: true, model.StatoRifiutata: true},
-	model.StatoApprovata: {model.StatoAttendePagamento: true},
-	model.StatoAttendePagamento: {model.StatoPagamentoRicevuto: true},
-	model.StatoPagamentoRicevuto: {model.StatoVistoInElaborazione: true},
-	model.StatoVistoInElaborazione: {model.StatoVistoEmesso: true},
-	model.StatoVistoEmesso: {model.StatoCompletata: true},
+	model.StatoSospesa:               {model.StatoInLavorazione: true, model.StatoRifiutata: true},
+	model.StatoApprovata:             {model.StatoAttendePagamento: true},
+	model.StatoAttendePagamento:      {model.StatoPagamentoRicevuto: true},
+	model.StatoPagamentoRicevuto:     {model.StatoVistoInElaborazione: true},
+	model.StatoVistoInElaborazione:   {model.StatoVistoEmesso: true},
+	model.StatoVistoEmesso:           {model.StatoCompletata: true},
 }
 
 func (s *MemoryStore) ChangePraticaState(id string, fromActor string, next model.StatoPratica, note string) (model.Pratica, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.pratiche[id]
-	if !ok { return model.Pratica{}, ErrNotFound }
-	if !allowedTransitions[p.Stato][next] { return model.Pratica{}, ErrInvalidState }
+	if !ok {
+		return model.Pratica{}, ErrNotFound
+	}
+	if !allowedTransitions[p.Stato][next] {
+		return model.Pratica{}, ErrInvalidState
+	}
 	now := time.Now().UTC()
 	evt := model.EventoPratica{ID: uuid.NewString(), PraticaID: id, AttoreID: fromActor, TipoEvento: "STATO_CAMBIATO", DaStato: p.Stato, AStato: next, Messaggio: note, CreatoIl: now}
 	p.Stato = next
 	p.AggiornatoIl = now
-	if next == model.StatoInviata { p.InviatoIl = &now }
-	if next == model.StatoCompletata { p.CompletatoIl = &now }
+	if next == model.StatoInviata {
+		p.InviatoIl = &now
+	}
+	if next == model.StatoCompletata {
+		p.CompletatoIl = &now
+	}
 	p.Eventi = append(p.Eventi, evt)
 	s.pratiche[id] = p
 	return p, nil
 }
 
 func (s *MemoryStore) AddDocumento(praticaID string, d model.Documento) (model.Documento, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.pratiche[praticaID]
-	if !ok { return model.Documento{}, ErrNotFound }
+	if !ok {
+		return model.Documento{}, ErrNotFound
+	}
 	d.ID = uuid.NewString()
 	d.PraticaID = praticaID
 	d.CaricatoIl = time.Now().UTC()
@@ -267,9 +320,12 @@ func (s *MemoryStore) AddDocumento(praticaID string, d model.Documento) (model.D
 }
 
 func (s *MemoryStore) ListDocumenti(praticaID string) ([]model.Documento, error) {
-	s.mu.RLock(); defer s.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	p, ok := s.pratiche[praticaID]
-	if !ok { return nil, ErrNotFound }
+	if !ok {
+		return nil, ErrNotFound
+	}
 	return p.Documenti, nil
 }
 
@@ -286,6 +342,94 @@ func (s *MemoryStore) GetDocumento(praticaID, documentoID string) (model.Documen
 		}
 	}
 	return model.Documento{}, ErrNotFound
+}
+
+func (s *MemoryStore) AssignOperatore(praticaID, operatoreID, actorID string) (model.Pratica, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pratiche[praticaID]
+	if !ok {
+		return model.Pratica{}, ErrNotFound
+	}
+	if _, ok := s.users[operatoreID]; !ok {
+		return model.Pratica{}, ErrNotFound
+	}
+	now := time.Now().UTC()
+	p.OperatoreID = operatoreID
+	p.AggiornatoIl = now
+	p.Eventi = append(p.Eventi, model.EventoPratica{
+		ID:         uuid.NewString(),
+		PraticaID:  p.ID,
+		AttoreID:   actorID,
+		TipoEvento: "ASSEGNAZIONE_OPERATORE",
+		Messaggio:  "operatore assegnato",
+		Metadata: map[string]any{
+			"operatore_id": operatoreID,
+		},
+		CreatoIl: now,
+	})
+	s.pratiche[praticaID] = p
+	return p, nil
+}
+
+func (s *MemoryStore) AddNota(praticaID, actorID, message string, internal bool) (model.Pratica, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, ok := s.pratiche[praticaID]
+	if !ok {
+		return model.Pratica{}, ErrNotFound
+	}
+	nota := strings.TrimSpace(message)
+	if nota == "" {
+		return model.Pratica{}, ErrForbiddenState
+	}
+	now := time.Now().UTC()
+	if internal {
+		if p.NoteInterne != "" {
+			p.NoteInterne += "\n"
+		}
+		p.NoteInterne += now.Format(time.RFC3339) + " | " + nota
+	} else {
+		if p.NoteRichiedente != "" {
+			p.NoteRichiedente += "\n"
+		}
+		p.NoteRichiedente += now.Format(time.RFC3339) + " | " + nota
+	}
+	p.AggiornatoIl = now
+	p.Eventi = append(p.Eventi, model.EventoPratica{
+		ID:         uuid.NewString(),
+		PraticaID:  p.ID,
+		AttoreID:   actorID,
+		TipoEvento: "NOTA_AGGIUNTA",
+		Messaggio:  nota,
+		Metadata: map[string]any{
+			"scope": map[bool]string{true: "interna", false: "richiedente"}[internal],
+		},
+		CreatoIl: now,
+	})
+	s.pratiche[praticaID] = p
+	return p, nil
+}
+
+func (s *MemoryStore) RequestDocumento(praticaID, actorID, documento, note string) (model.Pratica, error) {
+	p, err := s.GetPratica(praticaID)
+	if err != nil {
+		return model.Pratica{}, err
+	}
+	if p.Stato != model.StatoInLavorazione && p.Stato != model.StatoSospesa {
+		return model.Pratica{}, ErrInvalidState
+	}
+	if _, err := s.ChangePraticaState(praticaID, actorID, model.StatoIntegrazioneRichiesta, "richiesta integrazione documentale"); err != nil {
+		return model.Pratica{}, err
+	}
+	msg := strings.TrimSpace(documento)
+	if strings.TrimSpace(note) != "" {
+		msg += " - " + strings.TrimSpace(note)
+	}
+	if msg == "" {
+		msg = "documento aggiuntivo richiesto"
+	}
+	return s.AddNota(praticaID, actorID, msg, false)
 }
 
 func (s *MemoryStore) DeleteDocumento(praticaID, documentoID string) (bool, error) {
@@ -307,8 +451,11 @@ func (s *MemoryStore) DeleteDocumento(praticaID, documentoID string) (bool, erro
 }
 
 func (s *MemoryStore) CreatePayment(praticaID, provider string, amount float64) (model.Pagamento, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
-	if _, ok := s.pratiche[praticaID]; !ok { return model.Pagamento{}, ErrNotFound }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.pratiche[praticaID]; !ok {
+		return model.Pagamento{}, ErrNotFound
+	}
 	now := time.Now().UTC()
 	token := strings.ReplaceAll(uuid.NewString(), "-", "")
 	pay := model.Pagamento{
@@ -340,17 +487,23 @@ func (s *MemoryStore) UpdatePaymentCheckout(paymentID, providerSessionID, linkPa
 }
 
 func (s *MemoryStore) GetPaymentByToken(token string) (model.Pagamento, error) {
-	s.mu.RLock(); defer s.mu.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	for _, p := range s.payments {
-		if p.Token == token { return p, nil }
+		if p.Token == token {
+			return p, nil
+		}
 	}
 	return model.Pagamento{}, ErrNotFound
 }
 
 func (s *MemoryStore) ConfirmPaymentByToken(token string) (model.Pagamento, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for id, p := range s.payments {
-		if p.Token != token { continue }
+		if p.Token != token {
+			continue
+		}
 		now := time.Now().UTC()
 		p.Stato = model.PagamentoCompletato
 		p.PagatoIl = &now
@@ -361,7 +514,8 @@ func (s *MemoryStore) ConfirmPaymentByToken(token string) (model.Pagamento, erro
 }
 
 func (s *MemoryStore) RefundPaymentByToken(token string) (model.Pagamento, error) {
-	s.mu.Lock(); defer s.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for id, p := range s.payments {
 		if p.Token != token {
 			continue

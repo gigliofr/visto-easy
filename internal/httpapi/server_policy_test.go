@@ -173,6 +173,7 @@ func (f *fakePolicyStore) AddDocumento(praticaID string, d model.Documento) (mod
 	d.PraticaID = praticaID
 	d.CaricatoIl = time.Now().UTC()
 	d.StatoValidazione = "PENDING"
+	d.S3Key = fmt.Sprintf("pratiche/%s/documenti/%s_%s", praticaID, d.ID, d.NomeFile)
 	p.Documenti = append(p.Documenti, d)
 	f.pratiche[praticaID] = p
 	return d, nil

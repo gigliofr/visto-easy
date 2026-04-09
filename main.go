@@ -12,6 +12,11 @@ import (
 	"visto-easy/internal/store"
 )
 
+type closableStore interface {
+	store.DataStore
+	Close() error
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -20,13 +25,19 @@ func main() {
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
 		jwtSecret = os.Getenv("SESSION_SECRET")
+		if len(jwtSecret) < 32 && strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT"))) != "production" {
+			jwtSecret = "vistoeasy-local-dev-secret-key-2026-verylong"
+			log.Printf("JWT secret missing: using local development default secret")
+		}
 	}
 	if len(jwtSecret) < 32 {
 		log.Fatal("JWT_SECRET (or SESSION_SECRET) is required and must be >= 32 chars")
 	}
 	mongoURI := firstNonEmpty(os.Getenv("MONGODB_URI"), os.Getenv("DATABASE_URL"), os.Getenv("MONGO_URL"), os.Getenv("MONGODB_URL"))
 	if strings.TrimSpace(mongoURI) == "" {
-		log.Fatal("MONGODB_URI is required (aliases: DATABASE_URL, MONGO_URL, MONGODB_URL)")
+		if strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT"))) == "production" {
+			log.Fatal("MONGODB_URI is required (aliases: DATABASE_URL, MONGO_URL, MONGODB_URL)")
+		}
 	}
 	mongoDBName := strings.TrimSpace(firstNonEmpty(os.Getenv("MONGODB_DB_NAME"), os.Getenv("DATABASE_NAME")))
 	if mongoDBName == "" {
@@ -37,9 +48,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("token manager init failed: %v", err)
 	}
-	st, err := store.NewMongoStore(mongoURI, mongoDBName)
-	if err != nil {
-		log.Fatalf("mongo store init failed: %v", err)
+	var st closableStore
+	if strings.TrimSpace(mongoURI) == "" {
+		log.Printf("mongo URI missing: using in-memory store for local development")
+		st = store.NewMemoryStore()
+	} else {
+		mongoStore, err := store.NewMongoStore(mongoURI, mongoDBName)
+		if err != nil {
+			if strings.ToLower(strings.TrimSpace(os.Getenv("ENVIRONMENT"))) == "production" {
+				log.Fatalf("mongo store init failed: %v", err)
+			}
+			log.Printf("mongo store init failed, falling back to in-memory store: %v", err)
+			st = store.NewMemoryStore()
+		} else {
+			st = mongoStore
+		}
 	}
 	defer func() {
 		if err := st.Close(); err != nil {

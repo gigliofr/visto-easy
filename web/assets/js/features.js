@@ -33,6 +33,9 @@ const FALLBACK_COUNTRIES = [
 ];
 
 const PRACTICE_HISTORY_KEY = 'visto_easy_practice_history_v1';
+const BO_ACTIVE_TAB_KEY = 'visto_easy_bo_active_tab_v1';
+const BO_PRACTICES_VIEW_KEY = 'visto_easy_bo_pratiche_view_v1';
+const BO_PAGE_SIZE_KEY = 'visto_easy_bo_page_size_v1';
 const FINAL_PRACTICE_STATUSES = new Set(['APPROVATA', 'RIFIUTATA', 'ANNULLATA', 'COMPLETATA', 'CHIUSA']);
 const activePracticeFilters = {
   status: 'ALL',
@@ -42,13 +45,24 @@ const activePracticeFilters = {
 
 const boState = {
   scope: 'mine',
+  activeTab: 'pratiche',
+  activePraticheView: 'all',
+  activeUsersView: 'clienti',
+  page: 1,
+  pageSize: 20,
   query: '',
   stato: '',
   priorita: '',
   paese_dest: '',
   tipo_visto: '',
   items: [],
+  operators: [],
   selectedPraticaId: '',
+  activeOp: 'state',
+};
+
+const settingsState = {
+  activeTab: 'sicurezza',
 };
 
 function parseTs(value) {
@@ -72,6 +86,57 @@ function writePracticeHistory(items) {
     window.localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(items.slice(0, 300)));
   } catch (_err) {
     // Ignore storage errors to avoid blocking the main workflow.
+  }
+}
+
+function readBOPraticheView() {
+  try {
+    const raw = String(window.localStorage.getItem(BO_PRACTICES_VIEW_KEY) || '').toLowerCase();
+    return raw === 'new' || raw === 'all' ? raw : 'all';
+  } catch (_err) {
+    return 'all';
+  }
+}
+
+function writeBOPraticheView(viewName) {
+  try {
+    window.localStorage.setItem(BO_PRACTICES_VIEW_KEY, String(viewName || 'all'));
+  } catch (_err) {
+    // Ignore storage errors to avoid blocking the UI.
+  }
+}
+
+function readBOActiveTab() {
+  try {
+    const raw = String(window.localStorage.getItem(BO_ACTIVE_TAB_KEY) || '').toLowerCase();
+    return ['pratiche', 'utenti', 'audit', 'operazioni'].includes(raw) ? raw : 'pratiche';
+  } catch (_err) {
+    return 'pratiche';
+  }
+}
+
+function writeBOActiveTab(tabName) {
+  try {
+    window.localStorage.setItem(BO_ACTIVE_TAB_KEY, String(tabName || 'pratiche'));
+  } catch (_err) {
+    // Ignore storage errors to avoid blocking the UI.
+  }
+}
+
+function readBOPageSize() {
+  try {
+    const n = Number(window.localStorage.getItem(BO_PAGE_SIZE_KEY));
+    return [10, 20, 30, 50, 100].includes(n) ? n : 20;
+  } catch (_err) {
+    return 20;
+  }
+}
+
+function writeBOPageSize(pageSize) {
+  try {
+    window.localStorage.setItem(BO_PAGE_SIZE_KEY, String(pageSize || 20));
+  } catch (_err) {
+    // Ignore storage errors to avoid blocking the UI.
   }
 }
 
@@ -429,15 +494,93 @@ function sortBackofficePratiche(items) {
 
 function getOperatorLabel(p) {
   if (!p.operatore_id) return 'Non assegnata';
+  const op = boState.operators.find((item) => item.id === p.operatore_id);
+  if (op) {
+    const fullName = `${op.nome || ''} ${op.cognome || ''}`.trim();
+    if (p.operatore_id === getBackofficeUserId()) return `${fullName || op.email} (io)`;
+    return fullName || op.email;
+  }
   if (p.operatore_id === getBackofficeUserId()) return 'Assegnata a me';
   return 'Assegnata';
 }
 
+function renderBOAssignOperators() {
+  const select = document.getElementById('boAssignOperatorSelect');
+  if (!select) return;
+  const current = String(select.value || '');
+  const options = boState.operators
+    .map((op) => {
+      const fullName = `${op.nome || ''} ${op.cognome || ''}`.trim();
+      const label = fullName ? `${fullName} (${op.email})` : op.email;
+      return `<option value="${op.id}">${label}</option>`;
+    })
+    .join('');
+  select.innerHTML = '<option value="" selected disabled>Seleziona operatore disponibile</option>' + options;
+  select.disabled = boState.operators.length === 0;
+  if (boState.operators.length === 0) {
+    select.innerHTML = '<option value="" selected disabled>Nessun operatore disponibile</option>';
+  }
+  if (current && boState.operators.some((op) => op.id === current)) {
+    select.value = current;
+  }
+}
+
+function showBOUsersView(viewName) {
+  const active = String(viewName || 'clienti').toLowerCase() === 'operatori' ? 'operatori' : 'clienti';
+  boState.activeUsersView = active;
+  document.querySelectorAll('[data-bo-users-view]').forEach((btn) => {
+    const isActive = btn.dataset.boUsersView === active;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-bo-users-panel]').forEach((panel) => {
+    const isActive = panel.dataset.boUsersPanel === active;
+    panel.classList.toggle('hidden', !isActive);
+    panel.hidden = !isActive;
+  });
+}
+
+function wireBOUsersTabs() {
+  const tabs = document.querySelectorAll('[data-bo-users-view]');
+  if (!tabs.length) return;
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      showBOUsersView(btn.dataset.boUsersView || 'clienti');
+    });
+  });
+  showBOUsersView(boState.activeUsersView || 'clienti');
+}
+
+function getRichiedenteLabel(p) {
+  const nome = String(p.richiedente?.nome || '').trim();
+  const cognome = String(p.richiedente?.cognome || '').trim();
+  const email = String(p.richiedente?.email || '').trim();
+  const fullName = `${nome} ${cognome}`.trim();
+  if (fullName && email) return `${fullName} (${email})`;
+  if (fullName) return fullName;
+  if (email) return email;
+  return '-';
+}
+
 function getStatusBadgeClass(status) {
   const s = String(status || '').toUpperCase();
-  if (s === 'BOZZA' || s === 'INVIATA') return 'bo-status-badge';
-  if (s.includes('RIFIUT')) return 'bo-status-badge err';
-  if (s.includes('APPROV') || s.includes('VISTO_EMESSO') || s.includes('COMPLETATA')) return 'bo-status-badge ok';
+  const known = {
+    BOZZA: 'bo-status--bozza',
+    INVIATA: 'bo-status--inviata',
+    IN_LAVORAZIONE: 'bo-status--in_lavorazione',
+    INTEGRAZIONE_RICHIESTA: 'bo-status--integrazione_richiesta',
+    SOSPESA: 'bo-status--sospesa',
+    APPROVATA: 'bo-status--approvata',
+    RIFIUTATA: 'bo-status--rifiutata',
+    ATTENDE_PAGAMENTO: 'bo-status--attende_pagamento',
+    PAGAMENTO_RICEVUTO: 'bo-status--pagamento_ricevuto',
+    VISTO_IN_ELABORAZIONE: 'bo-status--visto_in_elaborazione',
+    VISTO_EMESSO: 'bo-status--visto_emesso',
+    COMPLETATA: 'bo-status--completata',
+    ANNULLATA: 'bo-status--annullata',
+  };
+  if (known[s]) return `bo-status-badge ${known[s]}`;
   return 'bo-status-badge';
 }
 
@@ -448,43 +591,136 @@ function setBackofficeFormIds(praticaID) {
   });
 }
 
+function resolveBOPraticaID(inputID) {
+  const explicitID = String(inputID || '').trim();
+  if (explicitID) return explicitID;
+  return String(boState.selectedPraticaId || '').trim();
+}
+
+async function loadBOPraticaDocumenti(praticaID) {
+  const docsContainer = document.getElementById('boDetailDocumenti');
+  const previewContainer = document.getElementById('boDocPreview');
+  if (!docsContainer || !praticaID) return;
+  docsContainer.innerHTML = '<p class="helper-text">Caricamento documenti...</p>';
+  try {
+    const docs = await api(`/api/pratiche/${praticaID}/documenti`);
+    if (!Array.isArray(docs) || !docs.length) {
+      docsContainer.innerHTML = '<p class="helper-text">Nessun documento disponibile.</p>';
+      if (previewContainer) previewContainer.innerHTML = '<p class="helper-text">Anteprima non disponibile.</p>';
+      return;
+    }
+    docsContainer.innerHTML = docs.map((d) => `
+      <article class="bo-doc-item">
+        <h4>${d.nome_file || 'Documento'}</h4>
+        <p>${d.tipo || '-'} | ${(d.mime_type || '-').toLowerCase()} | ${d.dimensione || 0} bytes</p>
+        <div class="inline-actions">
+          <button class="btn btn-ghost" type="button" data-doc-preview-id="${d.id}" data-doc-preview-mime="${d.mime_type || ''}" data-doc-preview-name="${d.nome_file || ''}">Anteprima</button>
+          <a class="btn btn-ghost" href="/api/pratiche/${praticaID}/documenti/${d.id}/download" target="_blank" rel="noopener noreferrer">Scarica</a>
+        </div>
+      </article>
+    `).join('');
+
+    docsContainer.querySelectorAll('[data-doc-preview-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const docID = button.dataset.docPreviewId;
+        const mime = button.dataset.docPreviewMime || '';
+        const fileName = button.dataset.docPreviewName || 'Documento';
+        renderBODocumentPreview(praticaID, docID, mime, fileName);
+      });
+    });
+
+    const first = docs[0];
+    renderBODocumentPreview(praticaID, first.id, first.mime_type || '', first.nome_file || 'Documento');
+  } catch (err) {
+    docsContainer.innerHTML = `<p class="helper-text">${extractErrMessage(err)}</p>`;
+    if (previewContainer) previewContainer.innerHTML = '<p class="helper-text">Anteprima non disponibile.</p>';
+  }
+}
+
+function renderBODocumentPreview(praticaID, docID, mimeType, fileName) {
+  const previewContainer = document.getElementById('boDocPreview');
+  if (!previewContainer) return;
+
+  const safeMime = String(mimeType || '').toLowerCase();
+  const previewURL = `/api/pratiche/${praticaID}/documenti/${docID}/preview`;
+  const downloadURL = `/api/pratiche/${praticaID}/documenti/${docID}/download`;
+
+  if (safeMime.startsWith('image/')) {
+    previewContainer.innerHTML = `
+      <figure class="bo-doc-preview-figure">
+        <img src="${previewURL}" alt="Anteprima ${fileName}" loading="lazy">
+      </figure>
+    `;
+    return;
+  }
+
+  if (safeMime.includes('pdf')) {
+    previewContainer.innerHTML = `
+      <iframe class="bo-doc-preview-frame" src="${previewURL}" title="Anteprima ${fileName}"></iframe>
+    `;
+    return;
+  }
+
+  previewContainer.innerHTML = `
+    <p class="helper-text">Anteprima non disponibile per questo formato.</p>
+    <a class="btn btn-ghost" href="${downloadURL}" target="_blank" rel="noopener noreferrer">Apri documento</a>
+  `;
+}
+
 function renderBackofficeDetail(pratica) {
   const detail = document.getElementById('boPraticaDetail');
   if (!detail) return;
   if (!pratica) {
     detail.innerHTML = '<p class="helper-text">Seleziona una pratica dalla tabella per vedere i dettagli.</p>';
     detail.classList.add('hidden');
+    detail.classList.remove('focus');
     return;
   }
 
   detail.classList.remove('hidden');
+  detail.classList.add('focus');
   detail.innerHTML = `
     <div class="bo-detail-head">
       <div>
         <h3>${pratica.codice || pratica.id}</h3>
         <p>${pratica.tipo_visto || '-'} | ${pratica.paese_dest || '-'}</p>
+        <p class="helper-text">Richiedente: ${getRichiedenteLabel(pratica)}</p>
       </div>
       <button class="btn btn-ghost" type="button" data-bo-action="back">Torna elenco</button>
     </div>
-    <p><span class="bo-status-badge">${pratica.stato || '-'}</span> <span class="bo-status-badge">${getOperatorLabel(pratica)}</span></p>
+    <p><span class="${getStatusBadgeClass(pratica.stato)}">${pratica.stato || '-'}</span> <span class="bo-status-badge">${getOperatorLabel(pratica)}</span></p>
     <p class="helper-text">Aggiornata ${new Date(pratica.aggiornato_il || pratica.creato_il).toLocaleString()}</p>
     <div class="bo-detail-actions">
       <button class="btn btn-solid" type="button" data-bo-action="assign-me">Assegna a me</button>
-      <button class="btn btn-ghost" type="button" data-bo-action="prefill-state">Usa nei controlli</button>
+      <button class="btn btn-ghost" type="button" data-bo-action="show-docs">Vedi documenti</button>
     </div>
-    <pre class="mono-box">${JSON.stringify({
-      id: pratica.id,
-      codice: pratica.codice,
-      stato: pratica.stato,
-      priorita: pratica.priorita,
-      operatore_id: pratica.operatore_id || '',
-      tipo_visto: pratica.tipo_visto,
-      paese_dest: pratica.paese_dest,
-      note_interne: pratica.note_interne || '',
-      note_richiedente: pratica.note_richiedente || '',
-      creato_il: pratica.creato_il,
-      aggiornato_il: pratica.aggiornato_il,
-    }, null, 2)}</pre>
+    <section class="bo-detail-grid">
+      <article class="bo-detail-card">
+        <h4>Dati pratica</h4>
+        <p><strong>ID:</strong> ${pratica.id || '-'}</p>
+        <p><strong>Priorita:</strong> ${pratica.priorita || '-'}</p>
+        <p><strong>Operatore:</strong> ${pratica.operatore_id || 'non assegnata'}</p>
+      </article>
+      <article class="bo-detail-card">
+        <h4>Note richiedente</h4>
+        <p>${pratica.note_richiedente || 'Nessuna nota richiedente'}</p>
+      </article>
+      <article class="bo-detail-card">
+        <h4>Note interne</h4>
+        <p>${pratica.note_interne || 'Nessuna nota interna'}</p>
+        <div class="bo-inline-note-editor">
+          <label>Nuova nota interna
+            <textarea id="boDetailInternalNote" rows="3" placeholder="Aggiungi una nota interna operativa"></textarea>
+          </label>
+          <button class="btn btn-ghost" type="button" data-bo-action="add-internal-note">Salva nota interna</button>
+        </div>
+      </article>
+    </section>
+    <section class="bo-detail-card">
+      <h4>Documenti</h4>
+      <div id="boDetailDocumenti"><p class="helper-text">Premi "Vedi documenti" per caricare l'elenco.</p></div>
+      <div id="boDocPreview" class="bo-doc-preview"><p class="helper-text">Seleziona un documento per l'anteprima.</p></div>
+    </section>
   `;
 
   detail.querySelector('[data-bo-action="back"]').addEventListener('click', () => {
@@ -515,9 +751,30 @@ function renderBackofficeDetail(pratica) {
     }
   });
 
-  detail.querySelector('[data-bo-action="prefill-state"]').addEventListener('click', () => {
-    setBackofficeFormIds(pratica.id);
-    notify('ok', `Pratica ${pratica.codice || pratica.id} pronta per operazioni`);
+  detail.querySelector('[data-bo-action="show-docs"]').addEventListener('click', async () => {
+    await loadBOPraticaDocumenti(pratica.id);
+  });
+
+  detail.querySelector('[data-bo-action="add-internal-note"]').addEventListener('click', async (ev) => {
+    const input = detail.querySelector('#boDetailInternalNote');
+    const messaggio = String(input?.value || '').trim();
+    if (!messaggio) {
+      notify('err', 'Inserisci un testo per la nota interna.');
+      return;
+    }
+    try {
+      await withBusy(ev.currentTarget, async () => {
+        const data = await api(`/api/bo/pratiche/${pratica.id}/note`, {
+          method: 'POST',
+          body: JSON.stringify({ messaggio, interna: true }),
+        });
+        out('BO aggiungi nota interna dettaglio', data);
+        notify('ok', 'Nota interna aggiunta');
+        await loadBOPratiche();
+      });
+    } catch (err) {
+      notify('err', extractErrMessage(err));
+    }
   });
 
   setBackofficeFormIds(pratica.id);
@@ -525,21 +782,31 @@ function renderBackofficeDetail(pratica) {
 
 function renderBOPraticheTable() {
   const container = els.boPratiche;
-  const rows = sortBackofficePratiche(boState.items.filter(matchesBackofficeFilters));
+  const filteredRows = sortBackofficePratiche(boState.items.filter(matchesBackofficeFilters));
   const selectedId = boState.selectedPraticaId;
   if (!container) return;
 
-  if (!rows.length) {
+  if (!filteredRows.length) {
     container.innerHTML = '<div class="list-item"><p>Nessuna pratica trovata</p></div>';
+    const pager = document.getElementById('boPagination');
+    if (pager) pager.innerHTML = '<span class="pager-info">0 risultati</span>';
     renderBackofficeDetail(null);
     return;
   }
+
+  const pageSize = Number(boState.pageSize) || 20;
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  boState.page = Math.min(Math.max(boState.page || 1, 1), totalPages);
+  const start = (boState.page - 1) * pageSize;
+  const rows = filteredRows.slice(start, start + pageSize);
 
   container.innerHTML = `
     <table class="bo-table">
       <thead>
         <tr>
           <th>Codice</th>
+          <th>Richiedente</th>
           <th>Stato</th>
           <th>Assegnazione</th>
           <th>Tipo visto</th>
@@ -551,6 +818,7 @@ function renderBOPraticheTable() {
         ${rows.map((p) => `
           <tr data-pratica-id="${p.id}" class="${p.id === selectedId ? 'selected' : ''}">
             <td>${p.codice || p.id}</td>
+            <td>${getRichiedenteLabel(p)}</td>
             <td><span class="${getStatusBadgeClass(p.stato)}">${p.stato || '-'}</span></td>
             <td>${getOperatorLabel(p)}</td>
             <td>${p.tipo_visto || '-'}</td>
@@ -561,6 +829,37 @@ function renderBOPraticheTable() {
       </tbody>
     </table>
   `;
+
+  const pager = document.getElementById('boPagination');
+  if (pager) {
+    pager.innerHTML = `
+      <button class="btn btn-ghost" type="button" data-bo-page="prev" ${boState.page <= 1 ? 'disabled' : ''}>Precedente</button>
+      <span class="pager-info">Pagina ${boState.page} di ${totalPages} (${totalRows} risultati)</span>
+      <button class="btn btn-ghost" type="button" data-bo-page="next" ${boState.page >= totalPages ? 'disabled' : ''}>Successiva</button>
+    `;
+    pager.querySelector('[data-bo-page="prev"]')?.addEventListener('click', () => {
+      if (boState.page <= 1) return;
+      boState.page -= 1;
+      renderBOPraticheTable();
+    });
+    pager.querySelector('[data-bo-page="next"]')?.addEventListener('click', () => {
+      if (boState.page >= totalPages) return;
+      boState.page += 1;
+      renderBOPraticheTable();
+    });
+  }
+
+  const pageSizeSelect = document.getElementById('boPageSize');
+  if (pageSizeSelect) {
+    pageSizeSelect.value = String(pageSize);
+    pageSizeSelect.onchange = () => {
+      const next = Number(pageSizeSelect.value);
+      boState.pageSize = [10, 20, 30, 50, 100].includes(next) ? next : 20;
+      boState.page = 1;
+      writeBOPageSize(boState.pageSize);
+      renderBOPraticheTable();
+    };
+  }
 
   container.querySelectorAll('[data-pratica-id]').forEach((row) => {
     row.addEventListener('click', () => {
@@ -594,8 +893,9 @@ function renderBONewPratiche() {
         <div>
           <h3>${p.codice || p.id}</h3>
           <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'}</p>
+          <p class="helper-text">${getRichiedenteLabel(p)}</p>
         </div>
-        <span class="bo-status-badge">${p.stato || '-'}</span>
+        <span class="${getStatusBadgeClass(p.stato)}">${p.stato || '-'}</span>
       </div>
       <p class="helper-text">${new Date(p.aggiornato_il || p.creato_il).toLocaleString()}</p>
       <button class="btn btn-solid" type="button" data-assign-id="${p.id}">Assegna a me</button>
@@ -627,10 +927,168 @@ function wireBackofficeMenu() {
   document.querySelectorAll('[data-bo-scope]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       boState.scope = btn.dataset.boScope || 'mine';
+      boState.page = 1;
       document.querySelectorAll('[data-bo-scope]').forEach((other) => other.classList.toggle('active', other === btn));
       await loadBOPratiche();
     });
   });
+}
+
+function showBackofficeTab(tabName) {
+  const active = String(tabName || 'pratiche');
+  boState.activeTab = active;
+  writeBOActiveTab(active);
+  document.querySelectorAll('[data-bo-tab]').forEach((btn) => {
+    const isActive = btn.dataset.boTab === active;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-bo-panel]').forEach((panel) => {
+    const isActive = panel.dataset.boPanel === active;
+    panel.classList.toggle('show', isActive);
+    panel.classList.toggle('active', isActive);
+    panel.classList.toggle('hidden', !isActive);
+    panel.hidden = !isActive;
+  });
+}
+
+function wireBackofficeTabs() {
+  boState.activeTab = readBOActiveTab();
+  document.querySelectorAll('[data-bo-tab]').forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      showBackofficeTab(btn.dataset.boTab || 'pratiche');
+    });
+  });
+  showBackofficeTab(boState.activeTab || 'pratiche');
+}
+
+function showBOPraticheView(viewName) {
+  const active = String(viewName || 'all').toLowerCase() === 'new' ? 'new' : 'all';
+  boState.activePraticheView = active;
+  writeBOPraticheView(active);
+  document.querySelectorAll('[data-bo-pratiche-view]').forEach((btn) => {
+    const isActive = btn.dataset.boPraticheView === active;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-bo-pratiche-panel]').forEach((panel) => {
+    const isActive = panel.dataset.boPratichePanel === active;
+    panel.classList.toggle('hidden', !isActive);
+    panel.hidden = !isActive;
+  });
+
+  const detail = document.getElementById('boPraticaDetail');
+  if (detail && active !== 'all') {
+    detail.classList.add('hidden');
+  }
+  if (active === 'all' && boState.selectedPraticaId) {
+    const pratica = boState.items.find((item) => item.id === boState.selectedPraticaId) || null;
+    renderBackofficeDetail(pratica);
+  }
+}
+
+function wireBOPraticheTabs() {
+  const tabs = document.querySelectorAll('[data-bo-pratiche-view]');
+  if (!tabs.length) return;
+  boState.activePraticheView = readBOPraticheView();
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      showBOPraticheView(btn.dataset.boPraticheView || 'all');
+    });
+  });
+  showBOPraticheView(boState.activePraticheView || 'all');
+}
+
+function showBackofficeOp(opName) {
+  const active = String(opName || 'state');
+  boState.activeOp = active;
+  document.querySelectorAll('[data-bo-op]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.boOp === active);
+  });
+  document.querySelectorAll('[data-bo-op-panel]').forEach((panel) => {
+    const isTarget = panel.dataset.boOpPanel === active;
+    panel.classList.toggle('hidden', !isTarget);
+    panel.hidden = !isTarget;
+  });
+}
+
+function wireBackofficeOpsMenu() {
+  const menu = document.getElementById('boOpsMenu');
+  if (!menu) return;
+  menu.querySelectorAll('[data-bo-op]').forEach((btn) => {
+    btn.addEventListener('click', () => showBackofficeOp(btn.dataset.boOp || 'state'));
+  });
+  showBackofficeOp(boState.activeOp || 'state');
+}
+
+function wireBackofficeFiltersToggle() {
+  const toggle = document.getElementById('btnBOToggleAdvancedFilters');
+  const panel = document.getElementById('boAdvancedFilters');
+  if (!toggle || !panel) return;
+
+  const sync = () => {
+    const expanded = !panel.classList.contains('hidden');
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle.textContent = expanded ? 'Nascondi filtri avanzati' : 'Filtri avanzati';
+  };
+
+  sync();
+  toggle.addEventListener('click', () => {
+    panel.classList.toggle('hidden');
+    panel.hidden = panel.classList.contains('hidden');
+    sync();
+  });
+}
+
+function showSettingsTab(tabName) {
+  const active = String(tabName || 'sicurezza');
+  settingsState.activeTab = active;
+  document.querySelectorAll('[data-settings-tab]').forEach((btn) => {
+    const isActive = btn.dataset.settingsTab === active;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-settings-panel]').forEach((panel) => {
+    const isActive = panel.dataset.settingsPanel === active;
+    panel.classList.toggle('show', isActive);
+    panel.classList.toggle('active', isActive);
+    panel.classList.toggle('hidden', !isActive);
+    panel.hidden = !isActive;
+  });
+}
+
+function wireSettingsTabs() {
+  const tabs = document.querySelectorAll('[data-settings-tab]');
+  if (!tabs.length) return;
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      showSettingsTab(btn.dataset.settingsTab || 'sicurezza');
+    });
+  });
+  showSettingsTab(settingsState.activeTab || 'sicurezza');
+}
+
+function renderSettingsAccountInfo() {
+  const roleEl = document.getElementById('settingsRoleValue');
+  const userEl = document.getElementById('settingsUserValue');
+  const twoFAStatus = document.getElementById('settings2FAStatus');
+  const twoFAHint = document.getElementById('settings2FAHint');
+  const totpEnabled = Boolean(state.user?.totp_enabled ?? state.user?.totpEnabled);
+  if (roleEl) roleEl.textContent = role() || 'ospite';
+  if (userEl) userEl.textContent = state.user?.email || 'non autenticato';
+  if (twoFAStatus) {
+    twoFAStatus.classList.toggle('settings-pill--ok', totpEnabled);
+    twoFAStatus.classList.toggle('settings-pill--warn', !totpEnabled);
+    twoFAStatus.textContent = totpEnabled ? 'Attivo' : 'Non attivo';
+  }
+  if (twoFAHint) {
+    twoFAHint.textContent = totpEnabled
+      ? 'Il secondo fattore e attivo. Mantieni al sicuro i codici della tua app autenticatore.'
+      : 'Il secondo fattore non e ancora abilitato su questo account.';
+  }
 }
 
 function syncBoFiltersFromForm(payload) {
@@ -699,16 +1157,47 @@ async function loadBOUsers() {
     notify('err', 'Azione riservata al backoffice');
     return [];
   }
-  const data = await api('/api/bo/utenti?page=1&page_size=20');
+  const data = await api('/api/bo/utenti?page=1&page_size=200');
   const items = data.items || [];
-  renderList(els.boUtenti, items, (u) => `
+  const clienti = items.filter((u) => String(u.ruolo || '').toUpperCase() === 'RICHIEDENTE');
+  const operatori = items.filter((u) => String(u.ruolo || '').toUpperCase() === 'OPERATORE');
+  const operatoriDisponibili = operatori.filter((u) => Boolean(u.attivo) && Boolean(u.email_verificata));
+  const invitiPendenti = operatori.filter((u) => !u.email_verificata);
+  boState.operators = operatoriDisponibili;
+
+  const clientiContainer = document.getElementById('boUtentiClienti');
+  if (clientiContainer) renderList(clientiContainer, clienti, (u) => `
+    <article class="list-item">
+      <h3>${u.email}</h3>
+      <p>${u.nome || ''} ${u.cognome || ''}</p>
+    </article>
+  `);
+
+  const operatoriContainer = document.getElementById('boUtentiOperatori');
+  if (operatoriContainer) renderList(operatoriContainer, operatoriDisponibili, (u) => `
     <article class="list-item">
       <h3>${u.email}</h3>
       <p>${u.nome || ''} ${u.cognome || ''} | ${u.ruolo}</p>
     </article>
   `);
+
+  const pendingContainer = document.getElementById('boUtentiOperatoriPending');
+  if (pendingContainer) renderList(pendingContainer, invitiPendenti, (u) => `
+    <article class="list-item">
+      <h3>${u.email}</h3>
+      <p>${u.nome || ''} ${u.cognome || ''} | Invito in attesa</p>
+    </article>
+  `);
+
+  renderBOAssignOperators();
+  renderBOPraticheTable();
   els.kpiUtenti.textContent = String(data.total || 0);
-  out('BO utenti caricati', { total: data.total || 0 });
+  out('BO utenti caricati', {
+    total: data.total || 0,
+    clienti: clienti.length,
+    operatori_disponibili: operatoriDisponibili.length,
+    inviti_pendenti: invitiPendenti.length,
+  });
   return items;
 }
 
@@ -825,6 +1314,8 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/2fa/enable', { method: 'POST', body: JSON.stringify(payload) });
+        state.user = { ...(state.user || {}), totp_enabled: true };
+        renderSettingsAccountInfo();
         out('2FA enable', data);
         notify('ok', '2FA abilitato');
       });
@@ -840,6 +1331,8 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/2fa/disable', { method: 'POST', body: JSON.stringify(payload) });
+        state.user = { ...(state.user || {}), totp_enabled: false };
+        renderSettingsAccountInfo();
         out('2FA disable', data);
         notify('ok', '2FA disabilitato');
       });
@@ -914,6 +1407,7 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
+        boState.page = 1;
         await loadBOPratiche({ q: payload.q, stato: payload.stato, priorita: payload.priorita, paese_dest: payload.paese_dest, tipo_visto: payload.tipo_visto });
         notify('ok', 'Filtri applicati');
       });
@@ -931,6 +1425,41 @@ function wireForms() {
     }
   });
 
+  const inviteForm = document.getElementById('formBOInviteOperator');
+  if (inviteForm) {
+    inviteForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const submit = ev.currentTarget.querySelector('button[type="submit"]');
+      const output = document.getElementById('boInviteOperatorOutput');
+      try {
+        await withBusy(submit, async () => {
+          const payload = formJson(ev.currentTarget);
+          const data = await api('/api/bo/operatori/inviti', {
+            method: 'POST',
+            body: JSON.stringify({
+              email: payload.email,
+              nome: payload.nome,
+              cognome: payload.cognome,
+            }),
+          });
+          if (output) {
+            output.textContent = data.invite_url
+              ? `Invito creato: ${data.invite_url}`
+              : `Invito creato. Token: ${data.invite_token || '-'}`;
+          }
+          out('BO invito operatore', data);
+          notify('ok', 'Invito operatore inviato');
+          ev.currentTarget.reset();
+          showBOUsersView('operatori');
+          await loadBOUsers();
+        });
+      } catch (err) {
+        if (output) output.textContent = extractErrMessage(err);
+        notify('err', extractErrMessage(err));
+      }
+    });
+  }
+
   document.getElementById('btnLoadAudit').addEventListener('click', async (ev) => {
     try {
       await withBusy(ev.currentTarget, () => loadBOAudit());
@@ -946,7 +1475,9 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api(`/api/bo/pratiche/${payload.id}/stato`, {
+        const praticaID = resolveBOPraticaID(payload.id);
+        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        const data = await api(`/api/bo/pratiche/${praticaID}/stato`, {
           method: 'PATCH',
           body: JSON.stringify({ stato: payload.stato, nota: payload.nota }),
         });
@@ -965,7 +1496,9 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api(`/api/bo/pratiche/${payload.id}/note`, {
+        const praticaID = resolveBOPraticaID(payload.id);
+        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        const data = await api(`/api/bo/pratiche/${praticaID}/note`, {
           method: 'POST',
           body: JSON.stringify({
             messaggio: payload.messaggio,
@@ -986,7 +1519,9 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api(`/api/bo/pratiche/${payload.id}/assegna`, {
+        const praticaID = resolveBOPraticaID(payload.id);
+        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        const data = await api(`/api/bo/pratiche/${praticaID}/assegna`, {
           method: 'POST',
           body: JSON.stringify({ operatore_id: payload.operatore_id }),
         });
@@ -1004,7 +1539,9 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api(`/api/bo/pratiche/${payload.id}/richiedi-doc`, {
+        const praticaID = resolveBOPraticaID(payload.id);
+        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        const data = await api(`/api/bo/pratiche/${praticaID}/richiedi-doc`, {
           method: 'POST',
           body: JSON.stringify({ documento: payload.documento, nota: payload.nota }),
         });
@@ -1022,7 +1559,9 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api(`/api/bo/pratiche/${payload.id}/link-pagamento`, {
+        const praticaID = resolveBOPraticaID(payload.id);
+        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        const data = await api(`/api/bo/pratiche/${praticaID}/link-pagamento`, {
           method: 'POST',
           body: JSON.stringify({ provider: payload.provider || 'stripe', importo: Number(payload.importo) }),
         });
@@ -1043,32 +1582,46 @@ function wireSessionButtons() {
     out('API base aggiornata', { api_base: state.apiBase || '(relativa)' });
   });
 
-  els.btnLogout.addEventListener('click', async (ev) => {
-    try {
-      await withBusy(ev.currentTarget, async () => {
-        if (!state.refreshToken) {
-          clearSession();
-          renderSessionInfo();
-          applyRoleGuards();
-          out('Logout locale', { status: 'no_refresh_token' });
-          notify('ok', 'Sessione locale chiusa');
-          return;
-        }
-        const data = await api('/api/auth/logout', {
-          method: 'POST',
-          body: JSON.stringify({ refresh_token: state.refreshToken }),
-        });
+  const runLogout = async (buttonEl) => {
+    await withBusy(buttonEl, async () => {
+      if (!state.refreshToken) {
         clearSession();
-        window.location.hash = '#auth';
         renderSessionInfo();
         applyRoleGuards();
-        out('Logout server', data);
-        notify('ok', 'Logout completato');
+        out('Logout locale', { status: 'no_refresh_token' });
+        notify('ok', 'Sessione locale chiusa');
+        return;
+      }
+      const data = await api('/api/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: state.refreshToken }),
       });
+      clearSession();
+      window.location.hash = '#auth';
+      renderSessionInfo();
+      applyRoleGuards();
+      out('Logout server', data);
+      notify('ok', 'Logout completato');
+    });
+  };
+
+  els.btnLogout.addEventListener('click', async (ev) => {
+    try {
+      await runLogout(ev.currentTarget);
     } catch (err) {
       notify('err', extractErrMessage(err));
     }
   });
+
+  if (els.boBtnLogout) {
+    els.boBtnLogout.addEventListener('click', async (ev) => {
+      try {
+        await runLogout(ev.currentTarget);
+      } catch (err) {
+        notify('err', extractErrMessage(err));
+      }
+    });
+  }
 
   if (els.btnRefreshSession) {
     els.btnRefreshSession.addEventListener('click', async (ev) => {
@@ -1096,9 +1649,22 @@ function wireSessionButtons() {
   }
 
   if (els.btnSettings) {
-    els.btnSettings.addEventListener('click', () => {
+    const goSettings = () => {
       if (!hasActiveSession()) return;
       window.location.hash = '#profilo';
+      renderSettingsAccountInfo();
+      showSettingsTab('sicurezza');
+      setSectionFromHash();
+      applyRoleGuards();
+    };
+    els.btnSettings.addEventListener('click', goSettings);
+    if (els.boBtnSettings) els.boBtnSettings.addEventListener('click', goSettings);
+  }
+
+  const btnSettingsBack = document.getElementById('btnSettingsBack');
+  if (btnSettingsBack) {
+    btnSettingsBack.addEventListener('click', () => {
+      window.location.hash = hasBackofficeRole() ? '#backoffice' : '#richiedente';
       setSectionFromHash();
       applyRoleGuards();
     });
@@ -1124,9 +1690,17 @@ export function initApp(bootMessage) {
   }
 
   renderSessionInfo();
+  boState.pageSize = readBOPageSize();
+  renderSettingsAccountInfo();
   wireTabs();
   wireAuthViews();
+  wireSettingsTabs();
+  wireBackofficeTabs();
+  wireBOPraticheTabs();
+  wireBOUsersTabs();
   wireBackofficeMenu();
+  wireBackofficeOpsMenu();
+  wireBackofficeFiltersToggle();
   wireForms();
   wireSessionButtons();
   wireActivePracticeFilters();

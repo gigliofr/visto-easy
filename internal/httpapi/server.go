@@ -1,8 +1,8 @@
 package httpapi
 
 import (
-	"crypto/rand"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
@@ -152,15 +152,15 @@ func (s *Server) ensureSeedDemoPratiche() {
 	demoUser, err := s.store.GetUserByEmail("demo.richiedente@vistoeasy.local")
 	if err != nil {
 		demoUser, err = s.store.CreateUser(model.Utente{
-			Email:          "demo.richiedente@vistoeasy.local",
-			Nome:           "Giulia",
-			Cognome:        "Demo",
-			Ruolo:          model.RoleRichiedente,
-			PasswordHash:   string(userHash),
-			Attivo:         true,
+			Email:           "demo.richiedente@vistoeasy.local",
+			Nome:            "Giulia",
+			Cognome:         "Demo",
+			Ruolo:           model.RoleRichiedente,
+			PasswordHash:    string(userHash),
+			Attivo:          true,
 			EmailVerificata: true,
-			CreatoIl:       now,
-			AggiornatoIl:   now,
+			CreatoIl:        now,
+			AggiornatoIl:    now,
 		})
 		if err != nil && !errors.Is(err, store.ErrAlreadyExists) {
 			log.Printf("[seed] unable to create demo richiedente: %v", err)
@@ -175,55 +175,141 @@ func (s *Server) ensureSeedDemoPratiche() {
 	}
 
 	existing := s.store.ListPraticheByUser(demoUser.ID)
-	if len(existing) >= 8 {
+	targetCount := 100
+	seedDemoDocumento := func(praticaID string, idx int) {
+		if idx%8 != 0 {
+			return
+		}
+		docs, err := s.store.ListDocumenti(praticaID)
+		if err != nil {
+			log.Printf("[seed] list documenti failed for pratica %s: %v", praticaID, err)
+			return
+		}
+		if len(docs) > 0 {
+			return
+		}
+		if _, err := s.store.AddDocumento(praticaID, model.Documento{
+			Tipo:       "PASSAPORTO",
+			NomeFile:   fmt.Sprintf("passaporto-demo-%03d.pdf", idx),
+			MimeType:   "application/pdf",
+			Dimensione: int64(180000 + idx),
+		}); err != nil {
+			log.Printf("[seed] add documento failed for pratica %s: %v", praticaID, err)
+		}
+	}
+
+	if len(existing) >= targetCount {
+		for i, p := range existing {
+			seedDemoDocumento(p.ID, i+1)
+		}
 		return
 	}
 
-	operatorID := demoUser.ID
+	operatorIDs := []string{}
 	if op, err := s.store.GetUserByEmail("operatore@vistoeasy.local"); err == nil && op.ID != "" {
-		operatorID = op.ID
+		operatorIDs = append(operatorIDs, op.ID)
+	}
+	if sup, err := s.store.GetUserByEmail("supervisore@vistoeasy.local"); err == nil && sup.ID != "" {
+		operatorIDs = append(operatorIDs, sup.ID)
+	}
+	if adm, err := s.store.GetUserByEmail("admin@vistoeasy.local"); err == nil && adm.ID != "" {
+		operatorIDs = append(operatorIDs, adm.ID)
+	}
+	if len(operatorIDs) == 0 {
+		operatorIDs = append(operatorIDs, demoUser.ID)
 	}
 
-	type def struct {
-		tipo   string
-		paese  string
-		states []model.StatoPratica
+	types := []string{"TURISMO", "STUDIO", "LAVORO", "BUSINESS", "TRANSITO"}
+	countries := []string{"JP", "CA", "US", "AE", "GB", "AU", "SG", "IT"}
+	priorities := []model.Priorita{model.PrioritaNormale, model.PrioritaAlta, model.PrioritaUrgente}
+	plans := [][]model.StatoPratica{
+		{},
+		{model.StatoInviata},
+		{model.StatoInviata, model.StatoInLavorazione},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoIntegrazioneRichiesta},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoSospesa},
+		{model.StatoInviata, model.StatoRifiutata},
+		{model.StatoAnnullata},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata, model.StatoAttendePagamento},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata, model.StatoAttendePagamento, model.StatoPagamentoRicevuto, model.StatoVistoInElaborazione, model.StatoVistoEmesso, model.StatoCompletata},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata, model.StatoAttendePagamento, model.StatoPagamentoRicevuto, model.StatoVistoInElaborazione, model.StatoVistoEmesso},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoIntegrazioneRichiesta, model.StatoInLavorazione, model.StatoApprovata},
+		{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata},
 	}
 
-	defs := []def{
-		{tipo: "TURISMO", paese: "JP", states: []model.StatoPratica{}},
-		{tipo: "LAVORO", paese: "CA", states: []model.StatoPratica{model.StatoInviata}},
-		{tipo: "STUDIO", paese: "US", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione}},
-		{tipo: "BUSINESS", paese: "AE", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoIntegrazioneRichiesta}},
-		{tipo: "TURISMO", paese: "GB", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoSospesa}},
-		{tipo: "STUDIO", paese: "AU", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata}},
-		{tipo: "BUSINESS", paese: "SG", states: []model.StatoPratica{model.StatoInviata, model.StatoRifiutata}},
-		{tipo: "LAVORO", paese: "IT", states: []model.StatoPratica{model.StatoInviata, model.StatoInLavorazione, model.StatoApprovata, model.StatoAttendePagamento, model.StatoPagamentoRicevuto, model.StatoVistoInElaborazione, model.StatoVistoEmesso, model.StatoCompletata}},
-	}
-
-	for _, d := range defs {
+	needed := targetCount - len(existing)
+	for i := 0; i < needed; i++ {
+		idx := len(existing) + i + 1
+		plan := plans[idx%len(plans)]
+		priority := priorities[idx%len(priorities)]
+		if idx%10 == 0 {
+			priority = model.PrioritaUrgente
+		}
 		p, err := s.store.CreatePratica(model.Pratica{
-			UtenteID:       demoUser.ID,
-			TipoVisto:      d.tipo,
-			PaeseDest:      d.paese,
-			DatiAnagrafici: map[string]any{"nome": "Giulia", "cognome": "Demo"},
-			DatiPassaporto: map[string]any{"numero": "YA1234567"},
+			UtenteID:  demoUser.ID,
+			TipoVisto: types[idx%len(types)],
+			PaeseDest: countries[(idx*3)%len(countries)],
+			Priorita:  priority,
+			DatiAnagrafici: map[string]any{
+				"nome":    "Giulia",
+				"cognome": "Demo",
+				"indice":  idx,
+				"lotto":   fmt.Sprintf("demo-%03d", idx),
+			},
+			DatiPassaporto: map[string]any{
+				"numero": fmt.Sprintf("YA%07d", 4000000+idx),
+			},
 		}, demoUser.ID)
 		if err != nil {
 			log.Printf("[seed] create pratica failed: %v", err)
 			continue
 		}
 
-		for _, next := range d.states {
-			actor := operatorID
-			if next == model.StatoInviata {
-				actor = demoUser.ID
+		assignedOperator := ""
+		if len(operatorIDs) > 0 && idx%4 != 0 && len(plan) > 0 {
+			assignedOperator = operatorIDs[idx%len(operatorIDs)]
+		}
+
+		if len(plan) > 0 {
+			if _, err := s.store.ChangePraticaState(p.ID, demoUser.ID, plan[0], fmt.Sprintf("seed demo step 1/%d", len(plan))); err != nil {
+				log.Printf("[seed] state transition failed for pratica %s -> %s: %v", p.ID, plan[0], err)
+				continue
 			}
-			if _, err := s.store.ChangePraticaState(p.ID, actor, next, "seed demo"); err != nil {
-				log.Printf("[seed] state transition failed for pratica %s -> %s: %v", p.ID, next, err)
-				break
+			if assignedOperator != "" && idx%5 != 0 {
+				if _, err := s.store.AssignOperatore(p.ID, assignedOperator, demoUser.ID); err != nil {
+					log.Printf("[seed] assign operator failed for pratica %s: %v", p.ID, err)
+				}
+			}
+			for step, next := range plan[1:] {
+				actor := demoUser.ID
+				if assignedOperator != "" {
+					actor = assignedOperator
+				}
+				if _, err := s.store.ChangePraticaState(p.ID, actor, next, fmt.Sprintf("seed demo step %d/%d", step+2, len(plan))); err != nil {
+					log.Printf("[seed] state transition failed for pratica %s -> %s: %v", p.ID, next, err)
+					break
+				}
 			}
 		}
+
+		if idx%6 == 0 {
+			if _, err := s.store.AddNota(p.ID, demoUser.ID, "Seed demo: pratica pronta per revisione documentale", false); err != nil {
+				log.Printf("[seed] add note failed for pratica %s: %v", p.ID, err)
+			}
+		}
+		if idx%9 == 0 {
+			if _, err := s.store.AddNota(p.ID, demoUser.ID, "Seed demo: verifica allegati e coerenza anagrafica", true); err != nil {
+				log.Printf("[seed] add internal note failed for pratica %s: %v", p.ID, err)
+			}
+		}
+		if idx%12 == 0 && assignedOperator != "" {
+			if _, err := s.store.AssignOperatore(p.ID, assignedOperator, demoUser.ID); err != nil {
+				log.Printf("[seed] reassign operator failed for pratica %s: %v", p.ID, err)
+			}
+		}
+
+
+		seedDemoDocumento(p.ID, idx)
 	}
 }
 
@@ -269,6 +355,8 @@ func (s *Server) Router() http.Handler {
 			r.Post("/{id}/documenti", s.handleAddDocumento)
 			r.Get("/{id}/documenti", s.handleListDocumenti)
 			r.Get("/{id}/documenti/{docId}", s.handleGetDocumento)
+			r.Get("/{id}/documenti/{docId}/preview", s.handlePreviewDocumento)
+			r.Get("/{id}/documenti/{docId}/download", s.handleDownloadDocumento)
 			r.Delete("/{id}/documenti/{docId}", s.handleDeleteDocumento)
 		})
 
@@ -285,6 +373,7 @@ func (s *Server) Router() http.Handler {
 		r.Route("/api/bo", func(r chi.Router) {
 			r.Use(s.requireRoles(model.RoleOperatore, model.RoleSupervisore, model.RoleAdmin))
 			r.Get("/utenti", s.handleBOListUtenti)
+			r.Post("/operatori/inviti", s.handleBOInviteOperatore)
 			r.Get("/utenti/{id}/sessioni", s.handleBOListUserSessions)
 			r.Post("/utenti/{id}/sessioni/revoca-all", s.handleBORevokeUserSessions)
 			r.Post("/sessioni/{id}/revoca", s.handleBORevokeSession)
@@ -386,7 +475,9 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		Nome     string `json:"nome"`
 		Cognome  string `json:"cognome"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	if req.Email == "" || len(req.Password) < 8 {
 		writeErr(w, http.StatusBadRequest, "email/password non validi")
 		return
@@ -394,7 +485,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	pwd, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	u, err := s.store.CreateUser(model.Utente{Email: req.Email, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente})
 	if err != nil {
-		if errors.Is(err, store.ErrAlreadyExists) { writeErr(w, http.StatusConflict, "utente già esistente"); return }
+		if errors.Is(err, store.ErrAlreadyExists) {
+			writeErr(w, http.StatusConflict, "utente già esistente")
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
@@ -407,7 +501,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Password string `json:"password"`
 		OTP      string `json:"otp"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	ip := clientIP(r)
 	ua := strings.TrimSpace(r.UserAgent())
@@ -488,18 +584,22 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	refreshID := uuid.NewString()
 	refresh, _ := s.tokens.SignRefreshWithJTI(u.ID, string(u.Ruolo), refreshID)
 	_, _ = s.store.CreateRefreshSession(model.RefreshSession{
-		ID:         refreshID,
-		UserID:     u.ID,
-		Role:       string(u.Ruolo),
-		ExpiresAt:  time.Now().UTC().Add(7 * 24 * time.Hour),
-		Revoked:    false,
+		ID:        refreshID,
+		UserID:    u.ID,
+		Role:      string(u.Ruolo),
+		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+		Revoked:   false,
 	})
 	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
-	var req struct { RefreshToken string `json:"refresh_token"` }
-	if !decodeJSON(w, r, &req) { return }
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	c, err := s.tokens.Parse(req.RefreshToken)
 	if err != nil || c.Type != "refresh" {
 		_, _ = s.store.AddAuditEvent(model.AuditEvent{
@@ -541,11 +641,11 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	newRefreshID := uuid.NewString()
 	refresh, _ := s.tokens.SignRefreshWithJTI(c.UserID, c.Role, newRefreshID)
 	_, _ = s.store.CreateRefreshSession(model.RefreshSession{
-		ID:         newRefreshID,
-		UserID:     c.UserID,
-		Role:       c.Role,
-		ExpiresAt:  time.Now().UTC().Add(7 * 24 * time.Hour),
-		Revoked:    false,
+		ID:        newRefreshID,
+		UserID:    c.UserID,
+		Role:      c.Role,
+		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+		Revoked:   false,
 	})
 	_, _ = s.store.RevokeRefreshSession(c.ID, newRefreshID)
 	_, _ = s.store.AddAuditEvent(model.AuditEvent{
@@ -563,7 +663,9 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	var req struct { RefreshToken string `json:"refresh_token"` }
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
 	if decodeJSON(w, r, &req) && strings.TrimSpace(req.RefreshToken) != "" {
 		if c, err := s.tokens.Parse(req.RefreshToken); err == nil && c.Type == "refresh" && strings.TrimSpace(c.ID) != "" {
 			if ok, _ := s.store.RevokeRefreshSession(c.ID, ""); ok {
@@ -582,8 +684,12 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
-	var req struct { Email string `json:"email"` }
-	if !decodeJSON(w, r, &req) { return }
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email != "" {
 		u, err := s.store.GetUserByEmail(email)
@@ -646,7 +752,9 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		Token       string `json:"token"`
 		NewPassword string `json:"new_password"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	if len(strings.TrimSpace(req.NewPassword)) < 8 {
 		writeErr(w, http.StatusBadRequest, "password troppo corta")
 		return
@@ -812,17 +920,26 @@ func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
 		DatiAnagrafici map[string]any `json:"dati_anagrafici"`
 		DatiPassaporto map[string]any `json:"dati_passaporto"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	p, err := s.store.CreatePratica(model.Pratica{UtenteID: claims.UserID, TipoVisto: req.TipoVisto, PaeseDest: req.PaeseDest, DatiAnagrafici: req.DatiAnagrafici, DatiPassaporto: req.DatiPassaporto}, claims.UserID)
-	if err != nil { writeErr(w, http.StatusInternalServerError, "errore creazione pratica"); return }
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore creazione pratica")
+		return
+	}
 	writeJSON(w, http.StatusCreated, p)
 }
 
 func (s *Server) handleListMiePratiche(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	if claims == nil { writeErr(w, http.StatusUnauthorized, "non autenticato"); return }
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
 	if claims.Role == string(model.RoleRichiedente) {
-		writeJSON(w, http.StatusOK, s.store.ListPraticheByUser(claims.UserID)); return
+		writeJSON(w, http.StatusOK, s.store.ListPraticheByUser(claims.UserID))
+		return
 	}
 	writeJSON(w, http.StatusOK, s.store.ListAllPratiche())
 }
@@ -830,9 +947,15 @@ func (s *Server) handleListMiePratiche(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetPratica(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
-	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
 	claims := claimsFromCtx(r.Context())
-	if claims == nil { writeErr(w, http.StatusUnauthorized, "non autenticato"); return }
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
 	if claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID {
 		writeErr(w, http.StatusForbidden, "accesso negato")
 		return
@@ -842,13 +965,21 @@ func (s *Server) handleGetPratica(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	if claims == nil || claims.Role != string(model.RoleRichiedente) { writeErr(w, http.StatusForbidden, "solo richiedente"); return }
+	if claims == nil || claims.Role != string(model.RoleRichiedente) {
+		writeErr(w, http.StatusForbidden, "solo richiedente")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var data map[string]any
-	if !decodeJSON(w, r, &data) { return }
+	if !decodeJSON(w, r, &data) {
+		return
+	}
 	p, err := s.store.UpdatePraticaAsDraft(id, claims.UserID, data)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
 		writeErr(w, http.StatusForbidden, "modifica non consentita")
 		return
 	}
@@ -857,9 +988,15 @@ func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeletePratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	if claims == nil || claims.Role != string(model.RoleRichiedente) { writeErr(w, http.StatusForbidden, "solo richiedente"); return }
+	if claims == nil || claims.Role != string(model.RoleRichiedente) {
+		writeErr(w, http.StatusForbidden, "solo richiedente")
+		return
+	}
 	if err := s.store.DeletePraticaAsDraft(chi.URLParam(r, "id"), claims.UserID); err != nil {
-		if errors.Is(err, store.ErrNotFound) { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
 		writeErr(w, http.StatusForbidden, "eliminazione non consentita")
 		return
 	}
@@ -888,7 +1025,10 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
-	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
 		writeErr(w, http.StatusForbidden, "accesso negato")
 		return
@@ -899,10 +1039,18 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 		MimeType   string `json:"mime_type"`
 		Dimensione int64  `json:"dimensione"`
 	}
-	if !decodeJSON(w, r, &req) { return }
-	if req.Dimensione > 10*1024*1024 { writeErr(w, http.StatusBadRequest, "file troppo grande") ; return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Dimensione > 10*1024*1024 {
+		writeErr(w, http.StatusBadRequest, "file troppo grande")
+		return
+	}
 	doc, err := s.store.AddDocumento(id, model.Documento{Tipo: req.Tipo, NomeFile: req.NomeFile, MimeType: strings.ToLower(req.MimeType), Dimensione: req.Dimensione})
-	if err != nil { writeErr(w, http.StatusInternalServerError, "errore upload"); return }
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore upload")
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{"documento": doc, "upload_url": "https://storage.example/upload/" + doc.ID})
 }
 
@@ -960,7 +1108,10 @@ func (s *Server) handleListDocumenti(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	docs, err := s.store.ListDocumenti(id)
-	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
 	writeJSON(w, http.StatusOK, docs)
 }
 
@@ -983,6 +1134,66 @@ func (s *Server) handleGetDocumento(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) handleDownloadDocumento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	praticaID := chi.URLParam(r, "id")
+	docID := chi.URLParam(r, "docId")
+	p, err := s.store.GetPratica(praticaID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
+	d, err := s.store.GetDocumento(praticaID, docID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "documento non trovato")
+		return
+	}
+
+	if s.presign != nil && strings.TrimSpace(d.S3Key) != "" {
+		session, err := s.presign.PresignDocumentDownload(d.S3Key, d.NomeFile)
+		if err == nil && strings.TrimSpace(session.DownloadURL) != "" {
+			http.Redirect(w, r, session.DownloadURL, http.StatusFound)
+			return
+		}
+	}
+
+	writeErr(w, http.StatusServiceUnavailable, "download non disponibile: storage non configurato")
+}
+
+func (s *Server) handlePreviewDocumento(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	praticaID := chi.URLParam(r, "id")
+	docID := chi.URLParam(r, "docId")
+	p, err := s.store.GetPratica(praticaID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
+	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
+		writeErr(w, http.StatusForbidden, "accesso negato")
+		return
+	}
+	d, err := s.store.GetDocumento(praticaID, docID)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "documento non trovato")
+		return
+	}
+
+	if s.presign != nil && strings.TrimSpace(d.S3Key) != "" {
+		session, err := s.presign.PresignDocumentDownload(d.S3Key, "")
+		if err == nil && strings.TrimSpace(session.DownloadURL) != "" {
+			http.Redirect(w, r, session.DownloadURL, http.StatusFound)
+			return
+		}
+	}
+
+	writeErr(w, http.StatusServiceUnavailable, "anteprima non disponibile: storage non configurato")
 }
 
 func (s *Server) handleDeleteDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1041,11 +1252,21 @@ func (s *Server) handleListEventiPratica(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Request) {
-	var req struct { PraticaID, Provider string; Importo float64 }
-	if !decodeJSON(w, r, &req) { return }
-	if req.Provider == "" { req.Provider = "stripe" }
+	var req struct {
+		PraticaID, Provider string
+		Importo             float64
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Provider == "" {
+		req.Provider = "stripe"
+	}
 	pay, err := s.store.CreatePayment(req.PraticaID, req.Provider, req.Importo)
-	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
 	pay, err = s.enrichPaymentCheckoutSession(pay)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
@@ -1059,7 +1280,10 @@ func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Re
 func (s *Server) handleGetPagamento(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	pay, err := s.store.GetPaymentByToken(token)
-	if err != nil { writeErr(w, http.StatusNotFound, "pagamento non trovato"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		return
+	}
 	writeJSON(w, http.StatusOK, pay)
 }
 
@@ -1109,7 +1333,10 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 	}
 
 	pay, err := s.store.ConfirmPaymentByToken(info.Token)
-	if err != nil { writeErr(w, http.StatusNotFound, "pagamento non trovato"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		return
+	}
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoPagamentoRicevuto, "webhook provider")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoInElaborazione, "generazione visto")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoEmesso, "visto emesso")
@@ -1291,6 +1518,127 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request) {
+	claims := claimsFromCtx(r.Context())
+	if claims == nil {
+		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		return
+	}
+	if claims.Role != string(model.RoleAdmin) && claims.Role != string(model.RoleSupervisore) {
+		writeErr(w, http.StatusForbidden, "solo admin o supervisore")
+		return
+	}
+
+	var req struct {
+		Email   string `json:"email"`
+		Nome    string `json:"nome"`
+		Cognome string `json:"cognome"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	nome := strings.TrimSpace(req.Nome)
+	cognome := strings.TrimSpace(req.Cognome)
+	if email == "" || !strings.Contains(email, "@") {
+		writeErr(w, http.StatusBadRequest, "email non valida")
+		return
+	}
+	if nome == "" || cognome == "" {
+		writeErr(w, http.StatusBadRequest, "nome e cognome obbligatori")
+		return
+	}
+
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	tempPassword := hex.EncodeToString(buf)
+	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), 12)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+
+	u, err := s.store.CreateUser(model.Utente{
+		Email:           email,
+		PasswordHash:    string(hash),
+		Nome:            nome,
+		Cognome:         cognome,
+		Ruolo:           model.RoleOperatore,
+		Attivo:          true,
+		EmailVerificata: false,
+	})
+	if err != nil {
+		if errors.Is(err, store.ErrAlreadyExists) {
+			writeErr(w, http.StatusConflict, "operatore gia esistente")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+
+	resetTokenRaw := make([]byte, 24)
+	if _, err := rand.Read(resetTokenRaw); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	inviteToken := hex.EncodeToString(resetTokenRaw)
+	expiresAt := time.Now().UTC().Add(72 * time.Hour)
+	if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{
+		Token:     inviteToken,
+		UserID:    u.ID,
+		Email:     email,
+		ExpiresAt: expiresAt,
+	}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+
+	inviteURL := strings.TrimSpace(os.Getenv("FRONTEND_OPERATOR_INVITE_URL"))
+	if inviteURL == "" {
+		inviteURL = strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL"))
+	}
+	if inviteURL != "" {
+		if strings.Contains(inviteURL, "{token}") {
+			inviteURL = strings.ReplaceAll(inviteURL, "{token}", inviteToken)
+		} else {
+			sep := "?"
+			if strings.Contains(inviteURL, "?") {
+				sep = "&"
+			}
+			inviteURL = inviteURL + sep + "token=" + inviteToken
+		}
+	}
+
+	textBody := "Sei stato invitato come operatore su Visto Easy."
+	htmlBody := "<p>Sei stato invitato come operatore su Visto Easy.</p>"
+	if inviteURL != "" {
+		textBody += "\nCompleta l'attivazione qui: " + inviteURL
+		htmlBody += "<p>Completa l'attivazione qui: <a href=\"" + inviteURL + "\">attiva account</a></p>"
+	} else {
+		textBody += "\nToken invito: " + inviteToken
+		htmlBody += "<p>Token invito: <strong>" + inviteToken + "</strong></p>"
+	}
+	textBody += "\nScadenza: " + expiresAt.Format(time.RFC3339)
+	htmlBody += "<p>Scadenza: " + expiresAt.Format(time.RFC3339) + "</p>"
+
+	if err := s.sendEmail(email, "Invito operatore Visto Easy", textBody, htmlBody); err != nil {
+		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "operator_invite", Email: email, UserID: u.ID, IP: clientIP(r)})
+	}
+
+	s.recordAuditEvent(r, claims, "BO_OPERATOR_INVITED", "user", u.ID, map[string]any{"email": email})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"status":       "invited",
+		"invited_user": u,
+		"invite_url":   inviteURL,
+		"invite_token": inviteToken,
+		"expires_at":   expiresAt.Format(time.RFC3339),
+	})
+}
+
 func (s *Server) handleBOListUserSessions(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleAdmin) {
@@ -1463,15 +1811,15 @@ func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Requ
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total":                 len(items),
-		"window_minutes":        windowMinutes,
-		"recent_failed_logins":  recentFailed,
-		"recent_locked_logins":  recentLocked,
-		"by_type":               byType,
-		"by_outcome":            byOutcome,
-		"top_failed_ips":        topMapEntries(recentFailedByIP, 5),
-		"top_failed_emails":     topMapEntries(recentFailedByEmail, 5),
-		"high_risk_detected":    recentFailed >= envInt("SECURITY_ALERT_FAILED_THRESHOLD", 5) || recentLocked > 0,
+		"total":                len(items),
+		"window_minutes":       windowMinutes,
+		"recent_failed_logins": recentFailed,
+		"recent_locked_logins": recentLocked,
+		"by_type":              byType,
+		"by_outcome":           byOutcome,
+		"top_failed_ips":       topMapEntries(recentFailedByIP, 5),
+		"top_failed_emails":    topMapEntries(recentFailedByEmail, 5),
+		"high_risk_detected":   recentFailed >= envInt("SECURITY_ALERT_FAILED_THRESHOLD", 5) || recentLocked > 0,
 	})
 }
 
@@ -2164,12 +2512,20 @@ func (s *Server) notifyPagamentoCompletato(pay model.Pagamento) {
 
 func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	var req struct { Stato model.StatoPratica `json:"stato"`; Nota string `json:"nota"` }
-	if !decodeJSON(w, r, &req) { return }
+	var req struct {
+		Stato model.StatoPratica `json:"stato"`
+		Nota  string             `json:"nota"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	praticaID := chi.URLParam(r, "id")
 	p, err := s.store.ChangePraticaState(praticaID, claims.UserID, req.Stato, req.Nota)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+		if errors.Is(err, store.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			return
+		}
 		writeErr(w, http.StatusBadRequest, "transizione non valida")
 		return
 	}
@@ -2179,8 +2535,12 @@ func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	var req struct { OperatoreID string `json:"operatore_id"` }
-	if !decodeJSON(w, r, &req) { return }
+	var req struct {
+		OperatoreID string `json:"operatore_id"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	praticaID := chi.URLParam(r, "id")
 	operatorID := strings.TrimSpace(req.OperatoreID)
 	p, err := s.store.AssignOperatore(praticaID, operatorID, claims.UserID)
@@ -2202,7 +2562,9 @@ func (s *Server) handleBOAddNota(w http.ResponseWriter, r *http.Request) {
 		Messaggio string `json:"messaggio"`
 		Interna   bool   `json:"interna"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	p, err := s.store.AddNota(chi.URLParam(r, "id"), claims.UserID, req.Messaggio, req.Interna)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -2222,7 +2584,9 @@ func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
 		Documento string `json:"documento"`
 		Nota      string `json:"nota"`
 	}
-	if !decodeJSON(w, r, &req) { return }
+	if !decodeJSON(w, r, &req) {
+		return
+	}
 	p, err := s.store.RequestDocumento(chi.URLParam(r, "id"), claims.UserID, req.Documento, req.Nota)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -2238,12 +2602,22 @@ func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
-	var req struct { Importo float64 `json:"importo"`; Provider string `json:"provider"` }
-	if !decodeJSON(w, r, &req) { return }
-	if req.Provider == "" { req.Provider = "stripe" }
+	var req struct {
+		Importo  float64 `json:"importo"`
+		Provider string  `json:"provider"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Provider == "" {
+		req.Provider = "stripe"
+	}
 	praticaID := chi.URLParam(r, "id")
 	pay, err := s.store.CreatePayment(praticaID, req.Provider, req.Importo)
-	if err != nil { writeErr(w, http.StatusNotFound, "pratica non trovata"); return }
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		return
+	}
 	pay, err = s.enrichPaymentCheckoutSession(pay)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
@@ -2328,7 +2702,9 @@ func (s *Server) handleBOInviaVisto(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBOStats(w http.ResponseWriter, _ *http.Request) {
 	all := s.store.ListAllPratiche()
 	stats := map[model.StatoPratica]int{}
-	for _, p := range all { stats[p.Stato]++ }
+	for _, p := range all {
+		stats[p.Stato]++
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"totale_pratiche": len(all), "by_stato": stats})
 }
 
@@ -2374,11 +2750,11 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 					IP:        key,
 					UserAgent: strings.TrimSpace(r.UserAgent()),
 					Metadata: map[string]any{
-						"path":       r.URL.Path,
-						"reason":     decision.AllowedBy.Reason,
-						"allowed_by": decision.AllowedBy.AllowedBy,
-						"allow_rule": decision.AllowedBy.IP,
-						"expires_at": formatOptTime(decision.AllowedBy.ExpiresAt),
+						"path":        r.URL.Path,
+						"reason":      decision.AllowedBy.Reason,
+						"allowed_by":  decision.AllowedBy.AllowedBy,
+						"allow_rule":  decision.AllowedBy.IP,
+						"expires_at":  formatOptTime(decision.AllowedBy.ExpiresAt),
 						"policy_rule": decision.Reason,
 					},
 				})
@@ -2392,11 +2768,11 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 					IP:        key,
 					UserAgent: strings.TrimSpace(r.UserAgent()),
 					Metadata: map[string]any{
-						"path":       r.URL.Path,
-						"reason":     decision.BlockedBy.Reason,
-						"blocked_by": decision.BlockedBy.BlockedBy,
-						"block_rule": decision.BlockedBy.IP,
-						"expires_at": formatOptTime(decision.BlockedBy.ExpiresAt),
+						"path":        r.URL.Path,
+						"reason":      decision.BlockedBy.Reason,
+						"blocked_by":  decision.BlockedBy.BlockedBy,
+						"block_rule":  decision.BlockedBy.IP,
+						"expires_at":  formatOptTime(decision.BlockedBy.ExpiresAt),
 						"policy_rule": decision.Reason,
 					},
 				})

@@ -4,10 +4,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"visto-easy/internal/auth"
 	"visto-easy/internal/model"
+	storagepkg "visto-easy/internal/storage"
 )
+
+type fakePresignService struct {
+	downloadURL string
+	uploadErr   error
+	downloadErr error
+}
+
+func (f fakePresignService) PresignDocumentUpload(_, _, _ string, _ int64) (storagepkg.UploadSession, error) {
+	if f.uploadErr != nil {
+		return storagepkg.UploadSession{}, f.uploadErr
+	}
+	return storagepkg.UploadSession{Key: "k", UploadURL: "https://upload.example", ExpiresAt: time.Now().UTC()}, nil
+}
+
+func (f fakePresignService) PresignDocumentDownload(_, _ string) (storagepkg.DownloadSession, error) {
+	if f.downloadErr != nil {
+		return storagepkg.DownloadSession{}, f.downloadErr
+	}
+	return storagepkg.DownloadSession{DownloadURL: f.downloadURL, ExpiresAt: time.Now().UTC()}, nil
+}
 
 func newDocumentTestServer(t *testing.T) (*Server, *fakePolicyStore, *auth.TokenManager) {
 	t.Helper()
@@ -110,3 +132,58 @@ func TestDeleteDocumentoAllowedOnlyInBozzaForOwner(t *testing.T) {
 		t.Fatalf("expected 403 after submit, got=%d body=%s", rrDeleteAfterSubmit.Code, rrDeleteAfterSubmit.Body.String())
 	}
 }
+
+func TestDownloadDocumentoRedirectsWhenPresignDownloadAvailable(t *testing.T) {
+	st := &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}}
+	tm, err := auth.NewTokenManager("this-is-a-long-test-secret-with-32-plus")
+	if err != nil {
+		t.Fatalf("token manager init failed: %v", err)
+	}
+	s := NewServer(st, tm, fakePresignService{downloadURL: "https://download.example/doc.pdf"})
+	u1, _, p, d := seedPraticaWithDocumento(t, st)
+	tok, err := tm.SignAccess(u1.ID, string(model.RoleRichiedente))
+	if err != nil {
+		t.Fatalf("sign token failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pratiche/"+p.ID+"/documenti/"+d.ID+"/download", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected 302 redirect, got=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Location"); got != "https://download.example/doc.pdf" {
+		t.Fatalf("unexpected redirect location: %s", got)
+	}
+}
+
+func TestDownloadDocumentoServiceUnavailableWhenPresignDownloadFails(t *testing.T) {
+	st := &fakePolicyStore{users: map[string]model.Utente{}, usersByEmail: map[string]string{}, pratiche: map[string]model.Pratica{}}
+	tm, err := auth.NewTokenManager("this-is-a-long-test-secret-with-32-plus")
+	if err != nil {
+		t.Fatalf("token manager init failed: %v", err)
+	}
+	s := NewServer(st, tm, fakePresignService{downloadErr: errUnavailable})
+	u1, _, p, d := seedPraticaWithDocumento(t, st)
+	tok, err := tm.SignAccess(u1.ID, string(model.RoleRichiedente))
+	if err != nil {
+		t.Fatalf("sign token failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pratiche/"+p.ID+"/documenti/"+d.ID+"/download", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rr := httptest.NewRecorder()
+
+	s.Router().ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
+var errUnavailable = &unavailableErr{}
+
+type unavailableErr struct{}
+
+func (e *unavailableErr) Error() string { return "no storage" }
