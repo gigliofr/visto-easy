@@ -4,6 +4,7 @@ export const els = {
   appOutput: document.getElementById('appOutput'),
   sessionRole: document.getElementById('sessionRole'),
   sessionUser: document.getElementById('sessionUser'),
+  btnSettings: document.getElementById('btnSettings'),
   btnLogout: document.getElementById('btnLogout'),
   btnRefreshSession: document.getElementById('btnRefreshSession'),
   btnSaveApiBase: document.getElementById('btnSaveApiBase'),
@@ -31,6 +32,7 @@ export function renderSessionInfo() {
   els.apiBaseInput.value = state.apiBase;
   const loggedIn = hasActiveSession();
   document.body.dataset.auth = loggedIn ? '1' : '0';
+  if (els.btnSettings) els.btnSettings.hidden = !loggedIn;
   if (els.btnRefreshSession) els.btnRefreshSession.hidden = !loggedIn;
   if (els.btnLogout) els.btnLogout.hidden = !loggedIn;
 }

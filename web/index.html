@@ -23,6 +23,7 @@
       <div class="hero-meta">
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
+        <button class="btn btn-ghost" id="btnSettings" type="button" hidden>Impostazioni</button>
         <button class="btn btn-solid" id="btnLogout" type="button" hidden>Esci</button>
       </div>
 
@@ -80,21 +81,27 @@
 
       <article class="panel hidden" id="profilo">
         <div class="panel-head">
-          <h2>Profilo e sicurezza</h2>
-          <p>Gestisci il secondo fattore (2FA) dopo aver effettuato l'accesso.</p>
+          <h2>Impostazioni</h2>
+          <p>Profilo, sicurezza e secondo fattore disponibili dopo l'accesso.</p>
         </div>
-        <div class="inline-actions">
-          <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+        <div class="settings-grid">
+          <section class="surface-block">
+            <h3 class="section-title">Profilo e sicurezza</h3>
+            <p class="helper-text">Gestisci il secondo fattore (2FA) dal tuo profilo.</p>
+            <div class="inline-actions">
+              <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+            </div>
+            <form id="form2FAEnable" class="inline-form">
+              <label>Codice da app autenticatore<input name="code" type="text" required></label>
+              <button class="btn btn-solid" type="submit">Attiva 2FA</button>
+            </form>
+            <form id="form2FADisable" class="inline-form">
+              <label>Codice corrente<input name="code" type="text" required></label>
+              <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
+            </form>
+            <pre id="twofaOutput" class="mono-box"></pre>
+          </section>
         </div>
-        <form id="form2FAEnable" class="inline-form">
-          <label>Codice da app autenticatore<input name="code" type="text" required></label>
-          <button class="btn btn-solid" type="submit">Attiva 2FA</button>
-        </form>
-        <form id="form2FADisable" class="inline-form">
-          <label>Codice corrente<input name="code" type="text" required></label>
-          <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
-        </form>
-        <pre id="twofaOutput" class="mono-box"></pre>
       </article>
 
       <article class="panel hidden" id="richiedente">
@@ -200,68 +207,96 @@
       <article class="panel hidden" id="backoffice">
         <div class="panel-head">
           <h2>Backoffice</h2>
-          <p>Pratiche, utenti, audit eventi.</p>
+          <p>Tabella pratiche, stato lavorazione e assegnazione singola addetto.</p>
         </div>
-
         <div id="boKpi" class="kpi-grid">
           <article class="kpi"><h3>Pratiche</h3><p id="kpiPratiche">-</p></article>
           <article class="kpi"><h3>Utenti</h3><p id="kpiUtenti">-</p></article>
           <article class="kpi"><h3>Audit</h3><p id="kpiAudit">-</p></article>
         </div>
 
-        <form id="formBOFilters" class="inline-form">
-          <label>Query<input name="q" type="text" placeholder="codice o email"></label>
-          <label>Stato<input name="stato" type="text" placeholder="INVIATA"></label>
-          <button class="btn btn-solid" type="submit">Filtra pratiche</button>
-        </form>
+        <div class="bo-shell">
+          <div class="bo-toolbar surface-block">
+            <div class="bo-scope" role="tablist" aria-label="Filtro pratiche backoffice">
+              <button class="tab active" type="button" data-bo-scope="mine">Le mie</button>
+              <button class="tab" type="button" data-bo-scope="all">Tutte</button>
+              <button class="tab" type="button" data-bo-scope="new">Nuove</button>
+            </div>
+            <form id="formBOFilters" class="inline-form bo-filter-grid">
+              <label>Ricerca<input name="q" type="text" placeholder="codice, email, note"></label>
+              <label>Stato<select name="stato"><option value="">Tutti</option><option value="BOZZA">Bozza</option><option value="INVIATA">Inviata</option><option value="IN_LAVORAZIONE">In lavorazione</option><option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option><option value="SOSPESA">Sospesa</option><option value="APPROVATA">Approvata</option><option value="RIFIUTATA">Rifiutata</option><option value="ATTENDE_PAGAMENTO">Attende pagamento</option><option value="PAGAMENTO_RICEVUTO">Pagamento ricevuto</option><option value="VISTO_IN_ELABORAZIONE">Visto in elaborazione</option><option value="VISTO_EMESSO">Visto emesso</option><option value="COMPLETATA">Completata</option></select></label>
+              <label>Priorità<select name="priorita"><option value="">Tutte</option><option value="NORMALE">Normale</option><option value="ALTA">Alta</option><option value="URGENTE">Urgente</option></select></label>
+              <label>Paese<input name="paese_dest" type="text" placeholder="JP"></label>
+              <label>Tipo visto<input name="tipo_visto" type="text" placeholder="TURISMO"></label>
+              <button class="btn btn-solid" type="submit">Applica filtri</button>
+            </form>
+          </div>
 
-        <div class="toolbar">
-          <button class="btn btn-ghost" id="btnLoadUsers" type="button">Carica utenti</button>
-          <button class="btn btn-ghost" id="btnLoadAudit" type="button">Carica audit</button>
+          <div class="bo-grid">
+            <section class="surface-block bo-list-pane">
+              <div class="toolbar">
+                <button class="btn btn-ghost" id="btnLoadUsers" type="button">Carica utenti</button>
+                <button class="btn btn-ghost" id="btnLoadAudit" type="button">Carica audit</button>
+              </div>
+              <h3 class="section-title">Nuove pratiche da assegnare</h3>
+              <div id="boNewPratiche" class="bo-cards"></div>
+              <h3 class="section-title">Tutte le pratiche</h3>
+              <div id="boPratiche" class="bo-table-wrap"></div>
+            </section>
+
+            <aside class="surface-block bo-detail-pane hidden" id="boPraticaDetail"></aside>
+          </div>
+
+          <details class="bo-secondary-ops">
+            <summary>Operazioni avanzate</summary>
+            <div class="bo-secondary-grid">
+              <div>
+                <div id="boUtenti" class="list compact"></div>
+                <div id="boAudit" class="list compact"></div>
+              </div>
+              <div class="bo-ops">
+                <form id="formBOChangeState" class="inline-form">
+                  <label>Pratica ID<input name="id" type="text" required></label>
+                  <label>Nuovo stato<input name="stato" type="text" required placeholder="IN_LAVORAZIONE"></label>
+                  <label>Nota<input name="nota" type="text" placeholder="aggiornamento"></label>
+                  <button class="btn btn-solid" type="submit">Cambia stato</button>
+                </form>
+
+                <form id="formBOAddNote" class="inline-form">
+                  <label>Pratica ID<input name="id" type="text" required></label>
+                  <label>Messaggio<input name="messaggio" type="text" required></label>
+                  <label>Interna
+                    <select name="interna">
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  </label>
+                  <button class="btn btn-ghost" type="submit">Aggiungi nota</button>
+                </form>
+
+                <form id="formBOAssign" class="inline-form">
+                  <label>Pratica ID<input name="id" type="text" required></label>
+                  <label>Operatore ID<input name="operatore_id" type="text" required></label>
+                  <button class="btn btn-ghost" type="submit">Assegna operatore</button>
+                </form>
+
+                <form id="formBORequestDoc" class="inline-form">
+                  <label>Pratica ID<input name="id" type="text" required></label>
+                  <label>Documento<input name="documento" type="text" required placeholder="PASSAPORTO"></label>
+                  <label>Nota<input name="nota" type="text" placeholder="allega documento leggibile"></label>
+                  <button class="btn btn-ghost" type="submit">Richiedi documento</button>
+                </form>
+
+                <form id="formBOPaymentLink" class="inline-form">
+                  <label>Pratica ID<input name="id" type="text" required></label>
+                  <label>Importo<input name="importo" type="number" required value="50"></label>
+                  <label>Provider<input name="provider" type="text" value="stripe"></label>
+                  <button class="btn btn-solid" type="submit">Crea link pagamento</button>
+                </form>
+              </div>
+            </div>
+          </details>
         </div>
-
-        <div id="boPratiche" class="list"></div>
-        <div id="boUtenti" class="list compact"></div>
-        <div id="boAudit" class="list compact"></div>
-
-        <form id="formBOChangeState" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Nuovo stato<input name="stato" type="text" required placeholder="IN_LAVORAZIONE"></label>
-          <label>Nota<input name="nota" type="text" placeholder="aggiornamento"></label>
-          <button class="btn btn-solid" type="submit">Cambia stato</button>
-        </form>
-
-        <form id="formBOAddNote" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Messaggio<input name="messaggio" type="text" required></label>
-          <label>Interna
-            <select name="interna">
-              <option value="true">true</option>
-              <option value="false">false</option>
-            </select>
-          </label>
-          <button class="btn btn-ghost" type="submit">Aggiungi nota</button>
-        </form>
-
-        <form id="formBOAssign" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Operatore ID<input name="operatore_id" type="text" required></label>
-          <button class="btn btn-ghost" type="submit">Assegna operatore</button>
-        </form>
-
-        <form id="formBORequestDoc" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Documento<input name="documento" type="text" required placeholder="PASSAPORTO"></label>
-          <label>Nota<input name="nota" type="text" placeholder="allega documento leggibile"></label>
-          <button class="btn btn-ghost" type="submit">Richiedi documento</button>
-        </form>
-
-        <form id="formBOPaymentLink" class="inline-form">
-          <label>Pratica ID<input name="id" type="text" required></label>
-          <label>Importo<input name="importo" type="number" required value="50"></label>
-          <label>Provider<input name="provider" type="text" value="stripe"></label>
-          <button class="btn btn-solid" type="submit">Crea link pagamento</button>
-        </form>
       </article>
     </section>
 

@@ -40,6 +40,17 @@ const activePracticeFilters = {
   sort: 'date_desc',
 };
 
+const boState = {
+  scope: 'mine',
+  query: '',
+  stato: '',
+  priorita: '',
+  paese_dest: '',
+  tipo_visto: '',
+  items: [],
+  selectedPraticaId: '',
+};
+
 function parseTs(value) {
   const ts = Date.parse(value || '');
   return Number.isFinite(ts) ? ts : 0;
@@ -384,6 +395,252 @@ function isBackofficeRoleName(roleName) {
   return role === 'OPERATORE' || role === 'SUPERVISORE' || role === 'ADMIN';
 }
 
+function getBackofficeUserId() {
+  return state.user?.id || '';
+}
+
+function isUnassignedPractice(p) {
+  return !String(p?.operatore_id || '').trim();
+}
+
+function normalizeBackofficeText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function matchesBackofficeFilters(p) {
+  const scope = String(boState.scope || 'mine');
+  const userID = getBackofficeUserId();
+  if (scope === 'mine' && userID && p.operatore_id !== userID) return false;
+  if (scope === 'new' && !isUnassignedPractice(p)) return false;
+  if (boState.stato && normalizeBackofficeText(p.stato) !== normalizeBackofficeText(boState.stato)) return false;
+  if (boState.priorita && normalizeBackofficeText(p.priorita) !== normalizeBackofficeText(boState.priorita)) return false;
+  if (boState.paese_dest && !normalizeBackofficeText(p.paese_dest).includes(normalizeBackofficeText(boState.paese_dest))) return false;
+  if (boState.tipo_visto && !normalizeBackofficeText(p.tipo_visto).includes(normalizeBackofficeText(boState.tipo_visto))) return false;
+  if (boState.query) {
+    const blob = [p.codice, p.stato, p.tipo_visto, p.paese_dest, p.note_interne, p.note_richiedente, p.richiedente?.email].map(normalizeBackofficeText).join(' ');
+    if (!blob.includes(normalizeBackofficeText(boState.query))) return false;
+  }
+  return true;
+}
+
+function sortBackofficePratiche(items) {
+  return [...items].sort((a, b) => parseTs(b.aggiornato_il || b.creato_il) - parseTs(a.aggiornato_il || a.creato_il));
+}
+
+function getOperatorLabel(p) {
+  if (!p.operatore_id) return 'Non assegnata';
+  if (p.operatore_id === getBackofficeUserId()) return 'Assegnata a me';
+  return 'Assegnata';
+}
+
+function getStatusBadgeClass(status) {
+  const s = String(status || '').toUpperCase();
+  if (s === 'BOZZA' || s === 'INVIATA') return 'bo-status-badge';
+  if (s.includes('RIFIUT')) return 'bo-status-badge err';
+  if (s.includes('APPROV') || s.includes('VISTO_EMESSO') || s.includes('COMPLETATA')) return 'bo-status-badge ok';
+  return 'bo-status-badge';
+}
+
+function setBackofficeFormIds(praticaID) {
+  ['formBOChangeState', 'formBOAddNote', 'formBOAssign', 'formBORequestDoc', 'formBOPaymentLink'].forEach((formId) => {
+    const input = document.querySelector(`#${formId} input[name="id"]`);
+    if (input) input.value = praticaID || '';
+  });
+}
+
+function renderBackofficeDetail(pratica) {
+  const detail = document.getElementById('boPraticaDetail');
+  if (!detail) return;
+  if (!pratica) {
+    detail.innerHTML = '<p class="helper-text">Seleziona una pratica dalla tabella per vedere i dettagli.</p>';
+    detail.classList.add('hidden');
+    return;
+  }
+
+  detail.classList.remove('hidden');
+  detail.innerHTML = `
+    <div class="bo-detail-head">
+      <div>
+        <h3>${pratica.codice || pratica.id}</h3>
+        <p>${pratica.tipo_visto || '-'} | ${pratica.paese_dest || '-'}</p>
+      </div>
+      <button class="btn btn-ghost" type="button" data-bo-action="back">Torna elenco</button>
+    </div>
+    <p><span class="bo-status-badge">${pratica.stato || '-'}</span> <span class="bo-status-badge">${getOperatorLabel(pratica)}</span></p>
+    <p class="helper-text">Aggiornata ${new Date(pratica.aggiornato_il || pratica.creato_il).toLocaleString()}</p>
+    <div class="bo-detail-actions">
+      <button class="btn btn-solid" type="button" data-bo-action="assign-me">Assegna a me</button>
+      <button class="btn btn-ghost" type="button" data-bo-action="prefill-state">Usa nei controlli</button>
+    </div>
+    <pre class="mono-box">${JSON.stringify({
+      id: pratica.id,
+      codice: pratica.codice,
+      stato: pratica.stato,
+      priorita: pratica.priorita,
+      operatore_id: pratica.operatore_id || '',
+      tipo_visto: pratica.tipo_visto,
+      paese_dest: pratica.paese_dest,
+      note_interne: pratica.note_interne || '',
+      note_richiedente: pratica.note_richiedente || '',
+      creato_il: pratica.creato_il,
+      aggiornato_il: pratica.aggiornato_il,
+    }, null, 2)}</pre>
+  `;
+
+  detail.querySelector('[data-bo-action="back"]').addEventListener('click', () => {
+    boState.selectedPraticaId = '';
+    setBackofficeFormIds('');
+    renderBackofficeDetail(null);
+    renderBOPraticheTable();
+  });
+
+  detail.querySelector('[data-bo-action="assign-me"]').addEventListener('click', async (ev) => {
+    try {
+      await withBusy(ev.currentTarget, async () => {
+        const userID = getBackofficeUserId();
+        if (!userID) {
+          notify('err', 'Utente backoffice non disponibile');
+          return;
+        }
+        const data = await api(`/api/bo/pratiche/${pratica.id}/assegna`, {
+          method: 'POST',
+          body: JSON.stringify({ operatore_id: userID }),
+        });
+        out('BO assegna a me', data);
+        notify('ok', 'Pratica assegnata a te');
+        await loadBOPratiche();
+      });
+    } catch (err) {
+      notify('err', extractErrMessage(err));
+    }
+  });
+
+  detail.querySelector('[data-bo-action="prefill-state"]').addEventListener('click', () => {
+    setBackofficeFormIds(pratica.id);
+    notify('ok', `Pratica ${pratica.codice || pratica.id} pronta per operazioni`);
+  });
+
+  setBackofficeFormIds(pratica.id);
+}
+
+function renderBOPraticheTable() {
+  const container = els.boPratiche;
+  const rows = sortBackofficePratiche(boState.items.filter(matchesBackofficeFilters));
+  const selectedId = boState.selectedPraticaId;
+  if (!container) return;
+
+  if (!rows.length) {
+    container.innerHTML = '<div class="list-item"><p>Nessuna pratica trovata</p></div>';
+    renderBackofficeDetail(null);
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="bo-table">
+      <thead>
+        <tr>
+          <th>Codice</th>
+          <th>Stato</th>
+          <th>Assegnazione</th>
+          <th>Tipo visto</th>
+          <th>Paese</th>
+          <th>Aggiornata</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((p) => `
+          <tr data-pratica-id="${p.id}" class="${p.id === selectedId ? 'selected' : ''}">
+            <td>${p.codice || p.id}</td>
+            <td><span class="${getStatusBadgeClass(p.stato)}">${p.stato || '-'}</span></td>
+            <td>${getOperatorLabel(p)}</td>
+            <td>${p.tipo_visto || '-'}</td>
+            <td>${p.paese_dest || '-'}</td>
+            <td>${new Date(p.aggiornato_il || p.creato_il).toLocaleString()}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  container.querySelectorAll('[data-pratica-id]').forEach((row) => {
+    row.addEventListener('click', () => {
+      const praticaID = row.dataset.praticaId;
+      boState.selectedPraticaId = praticaID;
+      const pratica = boState.items.find((item) => item.id === praticaID);
+      renderBackofficeDetail(pratica);
+      renderBOPraticheTable();
+    });
+  });
+
+  if (selectedId) {
+    renderBackofficeDetail(boState.items.find((item) => item.id === selectedId) || null);
+  } else {
+    renderBackofficeDetail(null);
+  }
+}
+
+function renderBONewPratiche() {
+  const container = document.getElementById('boNewPratiche');
+  if (!container) return;
+  const newRows = boState.items.filter((p) => isUnassignedPractice(p) && (normalizeBackofficeText(p.stato) === 'bozza' || normalizeBackofficeText(p.stato) === 'inviata'));
+  if (!newRows.length) {
+    container.innerHTML = '<div class="list-item"><p>Nessuna pratica nuova da assegnare</p></div>';
+    return;
+  }
+
+  container.innerHTML = newRows.slice(0, 6).map((p) => `
+    <article class="bo-card">
+      <div class="bo-card-head">
+        <div>
+          <h3>${p.codice || p.id}</h3>
+          <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'}</p>
+        </div>
+        <span class="bo-status-badge">${p.stato || '-'}</span>
+      </div>
+      <p class="helper-text">${new Date(p.aggiornato_il || p.creato_il).toLocaleString()}</p>
+      <button class="btn btn-solid" type="button" data-assign-id="${p.id}">Assegna a me</button>
+    </article>
+  `).join('');
+
+  container.querySelectorAll('[data-assign-id]').forEach((button) => {
+    button.addEventListener('click', async (ev) => {
+      try {
+        await withBusy(ev.currentTarget, async () => {
+          const userID = getBackofficeUserId();
+          const praticaID = button.dataset.assignId;
+          const data = await api(`/api/bo/pratiche/${praticaID}/assegna`, {
+            method: 'POST',
+            body: JSON.stringify({ operatore_id: userID }),
+          });
+          out('BO assegna nuova pratica', data);
+          notify('ok', 'Pratica assegnata');
+          await loadBOPratiche();
+        });
+      } catch (err) {
+        notify('err', extractErrMessage(err));
+      }
+    });
+  });
+}
+
+function wireBackofficeMenu() {
+  document.querySelectorAll('[data-bo-scope]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      boState.scope = btn.dataset.boScope || 'mine';
+      document.querySelectorAll('[data-bo-scope]').forEach((other) => other.classList.toggle('active', other === btn));
+      await loadBOPratiche();
+    });
+  });
+}
+
+function syncBoFiltersFromForm(payload) {
+  boState.query = payload.q || '';
+  boState.stato = payload.stato || '';
+  boState.priorita = payload.priorita || '';
+  boState.paese_dest = payload.paese_dest || '';
+  boState.tipo_visto = payload.tipo_visto || '';
+}
+
 function computeStatusBreakdown(items) {
   const acc = {};
   items.forEach((row) => {
@@ -411,23 +668,29 @@ async function loadBOPratiche(query = {}) {
     notify('err', 'Azione riservata al backoffice');
     return [];
   }
+  if (query && Object.keys(query).length > 0) {
+    syncBoFiltersFromForm(query);
+  }
   const params = new URLSearchParams();
-  if (query.q) params.set('q', query.q);
-  if (query.stato) params.set('stato', query.stato);
+  if (boState.query) params.set('q', boState.query);
+  if (boState.stato) params.set('stato', boState.stato);
+  if (boState.priorita) params.set('priorita', boState.priorita);
+  if (boState.paese_dest) params.set('paese_dest', boState.paese_dest);
+  if (boState.tipo_visto) params.set('tipo_visto', boState.tipo_visto);
   const data = await api(`/api/bo/pratiche?${params.toString()}`);
-  const items = data.items || [];
-  renderList(els.boPratiche, items, (row) => {
-    const p = row.pratica;
-    const u = row.richiedente || {};
-    return `
-      <article class="list-item">
-        <h3>${p.codice || p.id} - ${p.stato}</h3>
-        <p>${u.email || '-'} | ${p.tipo_visto || '-'} ${p.paese_dest || '-'}</p>
-      </article>
-    `;
-  });
+  const items = (data.items || []).map((row) => ({ ...row.pratica, richiedente: row.richiedente }));
+  boState.items = items;
+  if (boState.selectedPraticaId && !boState.items.some((item) => item.id === boState.selectedPraticaId)) {
+    boState.selectedPraticaId = '';
+  }
   els.kpiPratiche.textContent = String(data.total || 0);
-  out('BO pratiche caricate', { total: data.total || 0, by_status: computeStatusBreakdown(items) });
+  renderBOPraticheTable();
+  renderBONewPratiche();
+  out('BO pratiche caricate', {
+    total: data.total || 0,
+    by_status: computeStatusBreakdown(items.map((pratica) => ({ pratica }))),
+    scope: boState.scope,
+  });
   return items;
 }
 
@@ -651,7 +914,7 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        await loadBOPratiche({ q: payload.q, stato: payload.stato });
+        await loadBOPratiche({ q: payload.q, stato: payload.stato, priorita: payload.priorita, paese_dest: payload.paese_dest, tipo_visto: payload.tipo_visto });
         notify('ok', 'Filtri applicati');
       });
     } catch (err) {
@@ -831,6 +1094,15 @@ function wireSessionButtons() {
       }
     });
   }
+
+  if (els.btnSettings) {
+    els.btnSettings.addEventListener('click', () => {
+      if (!hasActiveSession()) return;
+      window.location.hash = '#profilo';
+      setSectionFromHash();
+      applyRoleGuards();
+    });
+  }
 }
 
 export function initApp(bootMessage) {
@@ -854,6 +1126,7 @@ export function initApp(bootMessage) {
   renderSessionInfo();
   wireTabs();
   wireAuthViews();
+  wireBackofficeMenu();
   wireForms();
   wireSessionButtons();
   wireActivePracticeFilters();
@@ -870,6 +1143,10 @@ export function initApp(bootMessage) {
   });
 
   if (hasBackofficeRole()) {
+    boState.scope = role() === 'ADMIN' ? 'all' : 'mine';
+    document.querySelectorAll('[data-bo-scope]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.boScope === boState.scope);
+    });
     loadBODashboard().catch((err) => notify('err', extractErrMessage(err)));
   }
 

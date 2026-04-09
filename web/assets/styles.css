@@ -26,9 +26,125 @@ body {
 body {
   font-family: "Manrope", "Segoe UI", sans-serif;
   color: var(--text);
+.settings-grid {
+  display: grid;
+  gap: 14px;
+}
   background:
     radial-gradient(1200px 600px at 20% -5%, #ffffff 0%, transparent 70%),
     radial-gradient(900px 500px at 95% 10%, #e9eef7 0%, transparent 65%),
+.bo-shell {
+  display: grid;
+  gap: 14px;
+}
+.bo-toolbar {
+  display: grid;
+  gap: 12px;
+}
+.bo-scope {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bo-filter-grid {
+  display: grid;
+  gap: 10px;
+}
+.bo-grid {
+  display: grid;
+  gap: 14px;
+}
+.bo-list-pane,
+.bo-detail-pane {
+  min-width: 0;
+}
+.bo-table-wrap {
+  display: grid;
+  gap: 10px;
+}
+.bo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.bo-table th,
+.bo-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e8eaf0;
+  text-align: left;
+}
+.bo-table tbody tr {
+  cursor: pointer;
+}
+.bo-table tbody tr:hover {
+  background: #f5f7fb;
+}
+.bo-table tbody tr.selected {
+  background: #eef4ff;
+}
+.bo-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #eef1f7;
+  font-size: 0.78rem;
+}
+.bo-cards {
+  display: grid;
+  gap: 10px;
+}
+.bo-card {
+  border: 1px solid #e4e7ed;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.bo-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: start;
+}
+.bo-detail-pane {
+  border: 1px solid #e4e7ed;
+  border-radius: 14px;
+  background: #fff;
+  padding: 12px;
+}
+.bo-detail-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+.bo-detail-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.bo-secondary-ops {
+  border: 1px solid #e4e7ed;
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.bo-secondary-ops summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.bo-secondary-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.bo-ops {
+  display: grid;
+  gap: 12px;
+}
     var(--bg);
   line-height: 1.45;
 }
@@ -100,23 +216,23 @@ h1 {
 body[data-auth="1"] #btnLogout {
   display: inline-flex;
 }
+@media (min-width: 980px) {
+  .rich-layout {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    align-items: start;
+  }
 
-.flow-nav {
-  margin-top: 22px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  #richiedente #formCreatePratica,
+  #richiedente #formDocUpload {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+  }
+
+  #richiedente #formCreatePratica button,
+  #richiedente #formDocUpload button {
+    grid-column: 1 / -1;
+  }
 }
-
-.hero-meta .api-base-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--line);
 }
 
 .hero-meta .api-base-label input {
