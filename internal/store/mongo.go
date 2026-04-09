@@ -173,9 +173,19 @@ func (s *MongoStore) seedBackofficeUsers(ctx context.Context) error {
 		{ID: uuid.NewString(), Email: "admin@vistoeasy.local", PasswordHash: string(pwd), Nome: "Anna", Cognome: "Admin", Ruolo: model.RoleAdmin, Attivo: true, EmailVerificata: true, CreatoIl: now, AggiornatoIl: now},
 	}
 	for _, u := range seed {
+		onInsert := bson.M{
+			"id":              u.ID,
+			"email":           u.Email,
+			"nome":            u.Nome,
+			"cognome":         u.Cognome,
+			"ruolo":           u.Ruolo,
+			"attivo":          u.Attivo,
+			"emailverificata": u.EmailVerificata,
+			"creatoil":        u.CreatoIl,
+		}
 		filter := bson.M{"email": u.Email}
 		update := bson.M{
-			"$setOnInsert": u,
+			"$setOnInsert": onInsert,
 			"$set": bson.M{
 				"passwordhash": string(pwd),
 				"aggiornatoil": now,
