@@ -186,9 +186,24 @@
           <h2>Area Richiedente</h2>
           <p>Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
         </div>
-        <div class="rich-layout">
-          <section class="rich-col">
-            <div class="surface-block">
+        <div class="rich-tabs-shell">
+          <ul class="nav nav-tabs rich-tabs" role="tablist" aria-label="Azioni area richiedente">
+            <li class="nav-item">
+              <button class="nav-link active" type="button" role="tab" aria-selected="true" data-rich-tab="create">Crea pratica</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="documents">Carica documenti</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="active">Pratiche attive</button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="history">Storico pratiche</button>
+            </li>
+          </ul>
+
+          <div class="rich-tabs-content">
+            <section class="surface-block rich-tab-panel" data-rich-panel="create">
               <h3 class="section-title">1. Crea pratica</h3>
               <form id="formCreatePratica" class="inline-form">
                 <label>Tipo visto
@@ -208,44 +223,11 @@
                 </label>
                 <button class="btn btn-solid" type="submit">Crea nuova pratica</button>
               </form>
-              <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai qui sotto e potrai allegare i documenti.</p>
-            </div>
+              <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai nei tab successivi.</p>
+            </section>
 
-            <div class="surface-block">
-              <div class="toolbar">
-                <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
-              </div>
-              <h3 class="section-title">2. Pratiche attive</h3>
-              <div class="inline-form active-filters">
-                <label>Stato
-                  <select id="activeStatusFilter" name="active_status_filter">
-                    <option value="ALL" selected>Tutti</option>
-                    <option value="BOZZA">Bozza</option>
-                    <option value="INVIATA">Inviata</option>
-                    <option value="IN_LAVORAZIONE">In lavorazione</option>
-                    <option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option>
-                    <option value="SOSPESA">Sospesa</option>
-                  </select>
-                </label>
-                <label>Cerca
-                  <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese">
-                </label>
-                <label>Ordina per
-                  <select id="activeSortFilter" name="active_sort_filter">
-                    <option value="date_desc" selected>Piu recenti</option>
-                    <option value="date_asc">Meno recenti</option>
-                    <option value="status">Stato</option>
-                    <option value="country">Paese</option>
-                  </select>
-                </label>
-              </div>
-              <div id="miePratiche" class="list"></div>
-            </div>
-          </section>
-
-          <section class="rich-col">
-            <div class="surface-block">
-              <h3 class="section-title">3. Carica documenti</h3>
+            <section class="surface-block rich-tab-panel hidden" data-rich-panel="documents" hidden>
+              <h3 class="section-title">2. Carica documenti</h3>
               <form id="formDocUpload" class="inline-form">
                 <label>Pratica da aggiornare
                   <select name="id" id="docPraticaSelect" required>
@@ -270,14 +252,45 @@
                 <input name="dimensione" type="hidden">
                 <button class="btn btn-ghost" type="submit">Aggiungi documento</button>
               </form>
-            </div>
+            </section>
 
-            <div class="surface-block">
+            <section class="surface-block rich-tab-panel hidden" data-rich-panel="active" hidden>
+              <div class="toolbar">
+                <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
+              </div>
+              <h3 class="section-title">3. Pratiche attive</h3>
+              <div class="inline-form active-filters">
+                <label>Stato
+                  <select id="activeStatusFilter" name="active_status_filter">
+                    <option value="ALL" selected>Tutti</option>
+                    <option value="BOZZA">Bozza</option>
+                    <option value="INVIATA">Inviata</option>
+                    <option value="IN_LAVORAZIONE">In lavorazione</option>
+                    <option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option>
+                    <option value="SOSPESA">Sospesa</option>
+                  </select>
+                </label>
+                <label>Cerca
+                  <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese">
+                </label>
+                <label>Ordina per
+                  <select id="activeSortFilter" name="active_sort_filter">
+                    <option value="date_desc" selected>Piu recenti</option>
+                    <option value="date_asc">Meno recenti</option>
+                    <option value="status">Stato</option>
+                    <option value="country">Paese</option>
+                  </select>
+                </label>
+              </div>
+              <div id="miePratiche" class="list"></div>
+            </section>
+
+            <section class="surface-block rich-tab-panel hidden" data-rich-panel="history" hidden>
               <h3 class="section-title">Storico pratiche</h3>
               <p class="helper-text">Elenco pratiche create in passato o gia concluse, utile per consultazione rapida.</p>
               <div id="storicoPratiche" class="list compact"></div>
-            </div>
-          </section>
+            </section>
+          </div>
         </div>
       </article>
 

@@ -33,6 +33,7 @@ const FALLBACK_COUNTRIES = [
 ];
 
 const PRACTICE_HISTORY_KEY = 'visto_easy_practice_history_v1';
+const RICH_ACTIVE_TAB_KEY = 'visto_easy_rich_active_tab_v1';
 const BO_ACTIVE_TAB_KEY = 'visto_easy_bo_active_tab_v1';
 const BO_PRACTICES_VIEW_KEY = 'visto_easy_bo_pratiche_view_v1';
 const BO_PAGE_SIZE_KEY = 'visto_easy_bo_page_size_v1';
@@ -65,6 +66,10 @@ const settingsState = {
   activeTab: 'sicurezza',
 };
 
+const richState = {
+  activeTab: 'create',
+};
+
 function parseTs(value) {
   const ts = Date.parse(value || '');
   return Number.isFinite(ts) ? ts : 0;
@@ -86,6 +91,23 @@ function writePracticeHistory(items) {
     window.localStorage.setItem(PRACTICE_HISTORY_KEY, JSON.stringify(items.slice(0, 300)));
   } catch (_err) {
     // Ignore storage errors to avoid blocking the main workflow.
+  }
+}
+
+function readRichActiveTab() {
+  try {
+    const raw = String(window.localStorage.getItem(RICH_ACTIVE_TAB_KEY) || '').toLowerCase();
+    return ['create', 'documents', 'active', 'history'].includes(raw) ? raw : 'create';
+  } catch (_err) {
+    return 'create';
+  }
+}
+
+function writeRichActiveTab(tabName) {
+  try {
+    window.localStorage.setItem(RICH_ACTIVE_TAB_KEY, String(tabName || 'create'));
+  } catch (_err) {
+    // Ignore storage errors to avoid blocking the UI.
   }
 }
 
@@ -330,6 +352,39 @@ function wireTabs() {
       if (pane) pane.classList.add('active');
     });
   });
+}
+
+function showRichTab(tabName) {
+  const active = ['create', 'documents', 'active', 'history'].includes(String(tabName || '').toLowerCase())
+    ? String(tabName || '').toLowerCase()
+    : 'create';
+  richState.activeTab = active;
+  writeRichActiveTab(active);
+
+  document.querySelectorAll('[data-rich-tab]').forEach((btn) => {
+    const isActive = btn.dataset.richTab === active;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+
+  document.querySelectorAll('[data-rich-panel]').forEach((panel) => {
+    const isActive = panel.dataset.richPanel === active;
+    panel.classList.toggle('hidden', !isActive);
+    panel.hidden = !isActive;
+  });
+}
+
+function wireRichTabs() {
+  const tabs = document.querySelectorAll('[data-rich-tab]');
+  if (!tabs.length) return;
+  richState.activeTab = readRichActiveTab();
+  tabs.forEach((btn) => {
+    btn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      showRichTab(btn.dataset.richTab || 'create');
+    });
+  });
+  showRichTab(richState.activeTab || 'create');
 }
 
 function showAuthView(view) {
@@ -1715,6 +1770,7 @@ export function initApp(bootMessage) {
   boState.pageSize = readBOPageSize();
   renderSettingsAccountInfo();
   wireTabs();
+  wireRichTabs();
   wireAuthViews();
   wireSettingsTabs();
   wireBackofficeTabs();

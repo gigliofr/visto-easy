@@ -921,6 +921,28 @@ body[data-auth="1"] #btnLogout {
   gap: 14px;
 }
 
+.rich-tabs-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.rich-tabs {
+  flex-wrap: wrap;
+}
+
+.rich-tabs-content {
+  display: grid;
+  gap: 12px;
+}
+
+.rich-tab-panel {
+  margin: 0;
+}
+
+.rich-tab-panel.hidden {
+  display: none !important;
+}
+
 .rich-col {
   display: grid;
   gap: 14px;
