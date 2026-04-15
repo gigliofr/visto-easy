@@ -327,6 +327,9 @@ func (s *Server) Router() http.Handler {
 		r2.URL.Path = "/"
 		s.handleRoot(w, r2)
 	})
+	r.Get("/verify-email", s.handleVerifyEmailLanding)
+	r.Get("/reset-password", s.handleResetPasswordLanding)
+
 	r.Get("/privacy-policy", s.handlePrivacyPolicy)
 	r.Get("/cookie-policy", s.handleCookiePolicy)
 	r.Get("/api/v1/health", s.handleHealth)
@@ -339,6 +342,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/logout", s.handleLogout)
 		r.With(s.authRateLimitMiddleware()).Post("/forgot-password", s.handleForgotPassword)
 		r.With(s.authRateLimitMiddleware()).Post("/reset-password", s.handleResetPassword)
+		r.Post("/verify-email", s.handleVerifyEmail)
 	})
 
 	r.Group(func(r chi.Router) {
@@ -483,13 +487,30 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pwd, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
-	u, err := s.store.CreateUser(model.Utente{Email: req.Email, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente})
+	u, err := s.store.CreateUser(model.Utente{Email: req.Email, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente, Attivo: false, EmailVerificata: false})
 	if err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
 			writeErr(w, http.StatusConflict, "utente già esistente")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+			verificationTokenRaw := make([]byte, 24)
+			if _, err := rand.Read(verificationTokenRaw); err != nil {
+				writeErr(w, http.StatusInternalServerError, "errore interno")
+				return
+			}
+			verificationToken := hex.EncodeToString(verificationTokenRaw)
+			expiresAt := time.Now().UTC().Add(24 * time.Hour)
+			if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{Token: verificationToken, Purpose: "email_verification", UserID: u.ID, Email: u.Email, ExpiresAt: expiresAt}); err != nil {
+				writeErr(w, http.StatusInternalServerError, "errore interno")
+				return
+			}
+			verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
+			textBody := "Benvenuto su Visto Easy.\nConferma il tuo account cliccando il link: " + verifyURL + "\nScade: " + expiresAt.Format(time.RFC3339)
+			htmlBody := "<p>Benvenuto su Visto Easy.</p><p>Conferma il tuo account cliccando il link: <a href=\"" + verifyURL + "\">attiva account</a></p><p>Scade: " + expiresAt.Format(time.RFC3339) + "</p>"
+			if err := s.sendEmail(u.Email, "Verifica email Visto Easy", textBody, htmlBody); err != nil {
+				s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "registration_verification", Email: u.Email, UserID: u.ID, IP: clientIP(r)})
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_link": verifyURL, "verification_expires": expiresAt.Format(time.RFC3339)})
 		return
 	}
 	writeJSON(w, http.StatusCreated, u)
@@ -562,6 +583,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			UserAgent: ua,
 		})
 		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
+		return
+	}
+	if !u.Attivo || !u.EmailVerificata {
+		s.recordSecurityEvent(model.SecurityEvent{Type: "LOGIN_FAILED", Outcome: "account_not_verified", Email: email, UserID: u.ID, IP: ip, UserAgent: ua})
+		writeErr(w, http.StatusForbidden, "account non ancora verificato")
 		return
 	}
 	if isBackofficeRole(u.Ruolo) && u.TOTPEnabled {
@@ -700,31 +726,16 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 				expiresAt := time.Now().UTC().Add(30 * time.Minute)
 				_, _ = s.store.CreatePasswordResetToken(model.PasswordResetToken{
 					Token:     token,
+					Purpose:   "password_reset",
 					UserID:    u.ID,
 					Email:     email,
 					ExpiresAt: expiresAt,
 				})
-				resetURL := strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL"))
-				if resetURL != "" {
-					if strings.Contains(resetURL, "{token}") {
-						resetURL = strings.ReplaceAll(resetURL, "{token}", token)
-					} else {
-						sep := "?"
-						if strings.Contains(resetURL, "?") {
-							sep = "&"
-						}
-						resetURL = resetURL + sep + "token=" + token
-					}
-				}
+				resetURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL")), "/reset-password", token)
 				textBody := "Abbiamo ricevuto una richiesta di reset password."
 				htmlBody := "<p>Abbiamo ricevuto una richiesta di reset password.</p>"
-				if resetURL != "" {
-					textBody += "\nUsa questo link: " + resetURL
-					htmlBody += "<p>Usa questo link: <a href=\"" + resetURL + "\">reset password</a></p>"
-				} else {
-					textBody += "\nToken: " + token
-					htmlBody += "<p>Token: <strong>" + token + "</strong></p>"
-				}
+				textBody += "\nUsa questo link: " + resetURL
+				htmlBody += "<p>Usa questo link: <a href=\"" + resetURL + "\">reset password</a></p>"
 				textBody += "\nScade: " + expiresAt.Format(time.RFC3339)
 				htmlBody += "<p>Scadenza: " + expiresAt.Format(time.RFC3339) + "</p>"
 				if err := s.sendEmail(email, "Reset password Visto Easy", textBody, htmlBody); err != nil {
@@ -777,6 +788,10 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
+	if !purposeMatches(resetRec.Purpose, "password_reset", "account_activation") {
+		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		return
+	}
 	pwd, err := bcrypt.GenerateFromPassword([]byte(strings.TrimSpace(req.NewPassword)), 12)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "errore interno")
@@ -786,6 +801,9 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	if err != nil || !ok {
 		writeErr(w, http.StatusInternalServerError, "errore interno")
 		return
+	}
+	if resetRec.Purpose == "account_activation" {
+		_, _ = s.store.SetUserVerificationState(resetRec.UserID, true, true)
 	}
 	s.recordSecurityEvent(model.SecurityEvent{
 		Type:    "PASSWORD_RESET_COMPLETED",
@@ -809,6 +827,44 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
 }
 
+func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		writeErr(w, http.StatusBadRequest, "token non valido")
+		return
+	}
+	verificationRec, err := s.store.ConsumePasswordResetToken(token)
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		return
+	}
+	if !purposeMatches(verificationRec.Purpose, "email_verification") {
+		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		return
+	}
+	if ok, _ := s.store.SetUserVerificationState(verificationRec.UserID, true, true); !ok {
+		writeErr(w, http.StatusNotFound, "utente non trovato")
+		return
+	}
+	_, _ = s.store.AddAuditEvent(model.AuditEvent{ActorID: verificationRec.UserID, Action: "AUTH_EMAIL_VERIFIED", Resource: "user", ResourceID: verificationRec.UserID, Details: map[string]any{"email": verificationRec.Email}})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "verified"})
+}
+
+func (s *Server) handleVerifyEmailLanding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, resolveWebPath("verify-email.html"))
+}
+
+func (s *Server) handleResetPasswordLanding(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, resolveWebPath("reset-password.html"))
+}
 func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
@@ -928,6 +984,7 @@ func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, "errore creazione pratica")
 		return
 	}
+	go s.notifyBackofficePraticaCreated(p)
 	writeJSON(w, http.StatusCreated, p)
 }
 
@@ -1568,7 +1625,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 		Nome:            nome,
 		Cognome:         cognome,
 		Ruolo:           model.RoleOperatore,
-		Attivo:          true,
+		Attivo:          false,
 		EmailVerificata: false,
 	})
 	if err != nil {
@@ -1589,6 +1646,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 	expiresAt := time.Now().UTC().Add(72 * time.Hour)
 	if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{
 		Token:     inviteToken,
+		Purpose:   "account_activation",
 		UserID:    u.ID,
 		Email:     email,
 		ExpiresAt: expiresAt,
@@ -1597,21 +1655,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	inviteURL := strings.TrimSpace(os.Getenv("FRONTEND_OPERATOR_INVITE_URL"))
-	if inviteURL == "" {
-		inviteURL = strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL"))
-	}
-	if inviteURL != "" {
-		if strings.Contains(inviteURL, "{token}") {
-			inviteURL = strings.ReplaceAll(inviteURL, "{token}", inviteToken)
-		} else {
-			sep := "?"
-			if strings.Contains(inviteURL, "?") {
-				sep = "&"
-			}
-			inviteURL = inviteURL + sep + "token=" + inviteToken
-		}
-	}
+	inviteURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_OPERATOR_INVITE_URL")), "/reset-password", inviteToken)
 
 	textBody := "Sei stato invitato come operatore su Visto Easy."
 	htmlBody := "<p>Sei stato invitato come operatore su Visto Easy.</p>"
@@ -1637,6 +1681,34 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 		"invite_token": inviteToken,
 		"expires_at":   expiresAt.Format(time.RFC3339),
 	})
+}
+
+func buildActionURL(baseURL, fallbackPath, token string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		baseURL = fallbackPath
+	}
+	if strings.Contains(baseURL, "{token}") {
+		return strings.ReplaceAll(baseURL, "{token}", token)
+	}
+	sep := "?"
+	if strings.Contains(baseURL, "?") {
+		sep = "&"
+	}
+	return baseURL + sep + "token=" + token
+}
+
+func purposeMatches(actual string, expected ...string) bool {
+	actual = strings.ToLower(strings.TrimSpace(actual))
+	if actual == "" {
+		return true
+	}
+	for _, item := range expected {
+		if actual == strings.ToLower(strings.TrimSpace(item)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleBOListUserSessions(w http.ResponseWriter, r *http.Request) {
@@ -2474,6 +2546,70 @@ func (s *Server) sendEmail(to, subject, textBody, htmlBody string) error {
 		return nil
 	}
 	return s.mailer.Send(to, subject, textBody, htmlBody)
+}
+
+func (s *Server) notifyBackofficePraticaCreated(p model.Pratica) {
+	if s.mailer == nil {
+		return
+	}
+	praticante, err := s.store.GetUserByID(p.UtenteID)
+	if err != nil {
+		return
+	}
+	recipients := s.backofficeNotificationRecipients()
+	if len(recipients) == 0 {
+		return
+	}
+	subject := "Nuovo visto inserito: " + p.Codice
+	textBody := fmt.Sprintf("Nuovo visto inserito.\nCodice: %s\nUtente: %s %s <%s>\nTipo visto: %s\nPaese destinazione: %s\nStato: %s", p.Codice, praticante.Nome, praticante.Cognome, praticante.Email, p.TipoVisto, p.PaeseDest, p.Stato)
+	htmlBody := fmt.Sprintf("<p>Nuovo visto inserito.</p><ul><li><strong>Codice:</strong> %s</li><li><strong>Utente:</strong> %s %s &lt;%s&gt;</li><li><strong>Tipo visto:</strong> %s</li><li><strong>Paese destinazione:</strong> %s</li><li><strong>Stato:</strong> %s</li></ul>", p.Codice, praticante.Nome, praticante.Cognome, praticante.Email, p.TipoVisto, p.PaeseDest, p.Stato)
+	for _, recipient := range recipients {
+		if err := s.sendEmail(recipient, subject, textBody, htmlBody); err != nil {
+			s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "new_pratica_notify", Email: recipient, UserID: praticante.ID, IP: ""})
+		}
+	}
+}
+
+func (s *Server) backofficeNotificationRecipients() []string {
+	raw := strings.TrimSpace(os.Getenv("BACKOFFICE_NOTIFY_EMAILS"))
+	if raw != "" {
+		parts := strings.Split(raw, ",")
+		out := make([]string, 0, len(parts))
+		seen := map[string]struct{}{}
+		for _, part := range parts {
+			email := strings.ToLower(strings.TrimSpace(part))
+			if email == "" {
+				continue
+			}
+			if _, ok := seen[email]; ok {
+				continue
+			}
+			seen[email] = struct{}{}
+			out = append(out, email)
+		}
+		return out
+	}
+	users := s.store.ListUsers()
+	out := make([]string, 0)
+	seen := map[string]struct{}{}
+	for _, u := range users {
+		if !u.Attivo || !u.EmailVerificata {
+			continue
+		}
+		if u.Ruolo != model.RoleOperatore && u.Ruolo != model.RoleSupervisore && u.Ruolo != model.RoleAdmin {
+			continue
+		}
+		email := strings.ToLower(strings.TrimSpace(u.Email))
+		if email == "" {
+			continue
+		}
+		if _, ok := seen[email]; ok {
+			continue
+		}
+		seen[email] = struct{}{}
+		out = append(out, email)
+	}
+	return out
 }
 
 func (s *Server) notifyPaymentLink(pay model.Pagamento) {

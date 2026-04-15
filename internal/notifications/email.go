@@ -2,11 +2,14 @@ package notifications
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
+	"mime"
+	"mime/multipart"
+	"net/smtp"
+	"net/textproto"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,35 +22,37 @@ type noopSender struct{}
 
 func (n noopSender) Send(_, _, _, _ string) error { return nil }
 
-type sendGridSender struct {
-	apiKey   string
-	fromEmail string
-	fromName string
-	apiBase  string
-	client   *http.Client
+type smtpSender struct {
+	host     string
+	port     int
+	user     string
+	key      string
+	from     string
 }
 
 func NewEmailSenderFromEnv() EmailSender {
-	apiKey := strings.TrimSpace(os.Getenv("SENDGRID_API_KEY"))
-	fromEmail := strings.TrimSpace(os.Getenv("SENDGRID_FROM_EMAIL"))
-	fromName := strings.TrimSpace(os.Getenv("SENDGRID_FROM_NAME"))
-	if apiKey == "" || fromEmail == "" {
+	host := strings.TrimSpace(os.Getenv("SMTP_HOST"))
+	portRaw := strings.TrimSpace(os.Getenv("SMTP_PORT"))
+	user := strings.TrimSpace(os.Getenv("SMTP_USER"))
+	key := strings.TrimSpace(os.Getenv("SMTP_KEY"))
+	from := strings.TrimSpace(os.Getenv("MAIL_FROM"))
+	if host == "" || portRaw == "" || user == "" || key == "" || from == "" {
 		return noopSender{}
 	}
-	apiBase := strings.TrimSpace(os.Getenv("SENDGRID_API_BASE"))
-	if apiBase == "" {
-		apiBase = "https://api.sendgrid.com"
+	port, err := strconv.Atoi(portRaw)
+	if err != nil || port <= 0 {
+		return noopSender{}
 	}
-	return &sendGridSender{
-		apiKey:    apiKey,
-		fromEmail: fromEmail,
-		fromName:  fromName,
-		apiBase:   strings.TrimRight(apiBase, "/"),
-		client:    &http.Client{Timeout: 12 * time.Second},
+	return &smtpSender{
+		host: host,
+		port: port,
+		user: user,
+		key:  key,
+		from: from,
 	}
 }
 
-func (s *sendGridSender) Send(to, subject, textBody, htmlBody string) error {
+func (s *smtpSender) Send(to, subject, textBody, htmlBody string) error {
 	to = strings.TrimSpace(to)
 	if to == "" {
 		return errors.New("recipient email required")
@@ -65,34 +70,45 @@ func (s *sendGridSender) Send(to, subject, textBody, htmlBody string) error {
 	if strings.TrimSpace(htmlBody) == "" {
 		htmlBody = "<p>" + textBody + "</p>"
 	}
-
-	payload := map[string]any{
-		"personalizations": []any{map[string]any{"to": []any{map[string]any{"email": to}}}},
-		"from": map[string]any{"email": s.fromEmail, "name": s.fromName},
-		"subject": subject,
-		"content": []any{
-			map[string]any{"type": "text/plain", "value": textBody},
-			map[string]any{"type": "text/html", "value": htmlBody},
-		},
+	var body bytes.Buffer
+	boundary := "visto-easy-alt-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	body.WriteString("From: " + s.from + "\r\n")
+	body.WriteString("To: " + to + "\r\n")
+	body.WriteString("Subject: " + mime.QEncoding.Encode("UTF-8", subject) + "\r\n")
+	body.WriteString("MIME-Version: 1.0\r\n")
+	body.WriteString("Content-Type: multipart/alternative; boundary=" + boundary + "\r\n")
+	body.WriteString("\r\n")
+	writer := multipart.NewWriter(&body)
+	if err := writer.SetBoundary(boundary); err != nil {
+		return err
 	}
-	body, err := json.Marshal(payload)
+	plainHeader := textproto.MIMEHeader{}
+	plainHeader.Set("Content-Type", "text/plain; charset=UTF-8")
+	plainHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	plainPart, err := writer.CreatePart(plainHeader)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, s.apiBase+"/v3/mail/send", bytes.NewReader(body))
+	if _, err := plainPart.Write([]byte(textBody)); err != nil {
+		return err
+	}
+	htmlHeader := textproto.MIMEHeader{}
+	htmlHeader.Set("Content-Type", "text/html; charset=UTF-8")
+	htmlHeader.Set("Content-Transfer-Encoding", "quoted-printable")
+	htmlPart, err := writer.CreatePart(htmlHeader)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
+	if _, err := htmlPart.Write([]byte(htmlBody)); err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("sendgrid send failed status=%d", resp.StatusCode)
+	if err := writer.Close(); err != nil {
+		return err
+	}
+	addr := fmt.Sprintf("%s:%d", s.host, s.port)
+	auth := smtp.PlainAuth("", s.user, s.key, s.host)
+	if err := smtp.SendMail(addr, auth, s.from, []string{to}, body.Bytes()); err != nil {
+		return fmt.Errorf("smtp send failed: %w", err)
 	}
 	return nil
 }

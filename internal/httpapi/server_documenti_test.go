@@ -44,11 +44,11 @@ func newDocumentTestServer(t *testing.T) (*Server, *fakePolicyStore, *auth.Token
 
 func seedPraticaWithDocumento(t *testing.T, st *fakePolicyStore) (model.Utente, model.Utente, model.Pratica, model.Documento) {
 	t.Helper()
-	u1, err := st.CreateUser(model.Utente{Email: "owner@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Owner", Cognome: "One"})
+	u1, err := st.CreateUser(model.Utente{Email: "owner@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Owner", Cognome: "One", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user1 failed: %v", err)
 	}
-	u2, err := st.CreateUser(model.Utente{Email: "other@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Other", Cognome: "Two"})
+	u2, err := st.CreateUser(model.Utente{Email: "other@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Other", Cognome: "Two", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user2 failed: %v", err)
 	}

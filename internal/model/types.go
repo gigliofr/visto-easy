@@ -139,6 +139,7 @@ type RefreshSession struct {
 
 type PasswordResetToken struct {
 	Token       string     `json:"token"`
+	Purpose     string     `json:"purpose,omitempty"`
 	UserID      string     `json:"user_id"`
 	Email       string     `json:"email"`
 	ExpiresAt   time.Time  `json:"expires_at"`

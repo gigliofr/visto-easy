@@ -16,7 +16,7 @@ import (
 func TestTwoFASetupEnableAndLogin(t *testing.T) {
 	s, st, _ := newSecurityHTTPTestServer(t)
 	pwd, _ := bcrypt.GenerateFromPassword([]byte("AdminPass123!"), 12)
-	u, err := st.CreateUser(model.Utente{Email: "bo2fa@example.com", PasswordHash: string(pwd), Ruolo: model.RoleAdmin, Nome: "Bo", Cognome: "TwoFA"})
+	u, err := st.CreateUser(model.Utente{Email: "bo2fa@example.com", PasswordHash: string(pwd), Ruolo: model.RoleAdmin, Nome: "Bo", Cognome: "TwoFA", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestTwoFASetupEnableAndLogin(t *testing.T) {
 func TestTwoFAEnableDisableRejectedAuditEvents(t *testing.T) {
 	s, st, _ := newSecurityHTTPTestServer(t)
 	pwd, _ := bcrypt.GenerateFromPassword([]byte("AdminPass123!"), 12)
-	u, err := st.CreateUser(model.Utente{Email: "bo2fa-reject@example.com", PasswordHash: string(pwd), Ruolo: model.RoleAdmin, Nome: "Bo", Cognome: "Reject"})
+	u, err := st.CreateUser(model.Utente{Email: "bo2fa-reject@example.com", PasswordHash: string(pwd), Ruolo: model.RoleAdmin, Nome: "Bo", Cognome: "Reject", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}

@@ -1334,7 +1334,11 @@ function wireForms() {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         out('Registrazione completata', data);
-        notify('ok', 'Registrazione completata');
+        if (data?.status === 'pending_verification') {
+          notify('ok', "Registrazione completata. Controlla la tua email per attivare l'account.");
+        } else {
+          notify('ok', 'Registrazione completata');
+        }
       });
     } catch (err) {
       notify('err', extractErrMessage(err));

@@ -84,8 +84,9 @@ func (s *MemoryStore) CreateUser(u model.Utente) (model.Utente, error) {
 	now := time.Now().UTC()
 	u.ID = uuid.NewString()
 	u.Email = emailKey
-	u.Attivo = true
-	u.EmailVerificata = true
+	if strings.TrimSpace(string(u.Ruolo)) == "" {
+		u.Ruolo = model.RoleRichiedente
+	}
 	u.CreatoIl = now
 	u.AggiornatoIl = now
 	s.users[u.ID] = u
@@ -122,6 +123,21 @@ func (s *MemoryStore) GetUserByID(id string) (model.Utente, error) {
 		return model.Utente{}, ErrNotFound
 	}
 	return u, nil
+}
+
+func (s *MemoryStore) SetUserVerificationState(userID string, attivo, emailVerificata bool) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	userID = strings.TrimSpace(userID)
+	u, ok := s.users[userID]
+	if !ok {
+		return false, nil
+	}
+	u.Attivo = attivo
+	u.EmailVerificata = emailVerificata
+	u.AggiornatoIl = time.Now().UTC()
+	s.users[userID] = u
+	return true, nil
 }
 
 func (s *MemoryStore) SetUserTOTPSecret(userID, secret string) (bool, error) {

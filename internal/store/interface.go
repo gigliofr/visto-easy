@@ -7,6 +7,7 @@ type DataStore interface {
 	ListUsers() []model.Utente
 	GetUserByEmail(email string) (model.Utente, error)
 	GetUserByID(id string) (model.Utente, error)
+	SetUserVerificationState(userID string, attivo, emailVerificata bool) (bool, error)
 	SetUserTOTPSecret(userID, secret string) (bool, error)
 	SetUserTOTPEnabled(userID string, enabled bool) (bool, error)
 	CreatePratica(p model.Pratica, actorID string) (model.Pratica, error)

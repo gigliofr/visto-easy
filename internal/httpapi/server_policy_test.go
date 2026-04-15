@@ -52,11 +52,20 @@ func (f *fakePolicyStore) CreateUser(u model.Utente) (model.Utente, error) {
 	u.Email = email
 	u.CreatoIl = now
 	u.AggiornatoIl = now
-	u.Attivo = true
-	u.EmailVerificata = true
 	f.users[u.ID] = u
 	f.usersByEmail[email] = u.ID
 	return u, nil
+}
+func (f *fakePolicyStore) SetUserVerificationState(userID string, attivo, emailVerificata bool) (bool, error) {
+	u, ok := f.users[strings.TrimSpace(userID)]
+	if !ok {
+		return false, nil
+	}
+	u.Attivo = attivo
+	u.EmailVerificata = emailVerificata
+	u.AggiornatoIl = time.Now().UTC()
+	f.users[u.ID] = u
+	return true, nil
 }
 func (f *fakePolicyStore) ListUsers() []model.Utente {
 	out := make([]model.Utente, 0, len(f.users))

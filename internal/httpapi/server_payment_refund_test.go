@@ -11,7 +11,7 @@ import (
 
 func TestBORefundPagamentoEndpoint(t *testing.T) {
 	s, st, token := newSecurityHTTPTestServer(t)
-	u, err := st.CreateUser(model.Utente{Email: "refund-owner@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "R", Cognome: "O"})
+	u, err := st.CreateUser(model.Utente{Email: "refund-owner@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "R", Cognome: "O", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestBORefundPagamentoEndpoint(t *testing.T) {
 
 func TestBORefundPagamentoConflictWhenNotCompleted(t *testing.T) {
 	s, st, token := newSecurityHTTPTestServer(t)
-	u, err := st.CreateUser(model.Utente{Email: "refund-pending@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "R", Cognome: "P"})
+	u, err := st.CreateUser(model.Utente{Email: "refund-pending@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "R", Cognome: "P", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}

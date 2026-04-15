@@ -659,8 +659,11 @@ main {
 }
 
 .hero {
-  padding: 44px 0 34px;
-  text-align: center;
+  padding: 40px 0 34px;
+  display: grid;
+  gap: 22px;
+  text-align: left;
+  align-items: center;
 }
 
 .hero-mode-title {
@@ -678,6 +681,12 @@ main {
   margin: 0;
 }
 
+.hero-copy {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
 h1 {
   margin: 10px 0 14px;
   font-size: clamp(2rem, 5.2vw, 4.2rem);
@@ -685,18 +694,62 @@ h1 {
   letter-spacing: -0.02em;
 }
 
+.hero h1 {
+  margin: 2px 0 6px;
+  max-width: 12ch;
+  font-size: clamp(2.3rem, 5vw, 4rem);
+}
+
 .subtitle {
-  margin: 0 auto;
-  max-width: 690px;
+  margin: 0;
+  max-width: 620px;
   color: var(--muted);
   font-size: clamp(1rem, 2vw, 1.2rem);
 }
 
+.hero-kicker {
+  margin: 0;
+  max-width: 520px;
+  color: var(--text);
+  font-size: 0.98rem;
+  opacity: 0.8;
+}
+
+.hero-art {
+  position: relative;
+  justify-self: center;
+  width: min(100%, 560px);
+  padding: 14px;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(245, 247, 250, 0.92)),
+    var(--surface);
+  border: 1px solid rgba(34, 36, 40, 0.08);
+  box-shadow: 0 28px 80px rgba(22, 24, 29, 0.08);
+}
+
+.hero-art::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border-radius: 24px;
+  background: radial-gradient(circle at top left, rgba(202, 16, 86, 0.12), transparent 40%), radial-gradient(circle at bottom right, rgba(31, 79, 143, 0.12), transparent 42%);
+  pointer-events: none;
+}
+
+.hero-art img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .hero-meta {
-  margin-top: 20px;
+  margin-top: 6px;
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
 }
 
@@ -718,6 +771,10 @@ body[data-section="backoffice"] .hero {
   font-size: 0.88rem;
   color: var(--muted);
   text-decoration: none;
+}
+
+.hidden-tech {
+  display: none;
 }
 
 #btnLogout {
@@ -810,14 +867,6 @@ body[data-auth="1"] #btnLogout {
   width: 220px;
   border-radius: 999px;
   padding: 6px 10px;
-}
-
-.hero-cta {
-  margin-top: 26px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
 .btn {
@@ -1371,6 +1420,19 @@ textarea:focus {
 }
 
 @media (min-width: 980px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 520px);
+    gap: 28px;
+  }
+
+  .hero-copy {
+    padding-right: 18px;
+  }
+
+  .hero-art {
+    justify-self: end;
+  }
+
   .rich-layout {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
     align-items: start;

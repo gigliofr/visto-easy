@@ -13,7 +13,7 @@ import (
 
 func TestAdminCanListAndRevokeUserSessions(t *testing.T) {
 	s, st, adminToken := newSecurityHTTPTestServer(t)
-	u, err := st.CreateUser(model.Utente{Email: "target-sessions@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Target", Cognome: "User"})
+	u, err := st.CreateUser(model.Utente{Email: "target-sessions@example.com", PasswordHash: "x", Ruolo: model.RoleRichiedente, Nome: "Target", Cognome: "User", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAdminCanListAndRevokeUserSessions(t *testing.T) {
 
 func TestNonAdminCannotManageSessions(t *testing.T) {
 	s, st, _ := newSecurityHTTPTestServer(t)
-	op, err := st.CreateUser(model.Utente{Email: "operatore-sessioni@example.com", PasswordHash: "x", Ruolo: model.RoleOperatore, Nome: "Operatore", Cognome: "NoAdmin"})
+	op, err := st.CreateUser(model.Utente{Email: "operatore-sessioni@example.com", PasswordHash: "x", Ruolo: model.RoleOperatore, Nome: "Operatore", Cognome: "NoAdmin", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create operator failed: %v", err)
 	}

@@ -15,7 +15,7 @@ import (
 func TestForgotAndResetPasswordFlow(t *testing.T) {
 	s, st, _ := newSecurityHTTPTestServer(t)
 	pwd, _ := bcrypt.GenerateFromPassword([]byte("OldPass123!"), 12)
-	u, err := st.CreateUser(model.Utente{Email: "reset@example.com", PasswordHash: string(pwd), Ruolo: model.RoleRichiedente, Nome: "Reset", Cognome: "User"})
+	u, err := st.CreateUser(model.Utente{Email: "reset@example.com", PasswordHash: string(pwd), Ruolo: model.RoleRichiedente, Nome: "Reset", Cognome: "User", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
@@ -81,12 +81,12 @@ func TestForgotAndResetPasswordFlow(t *testing.T) {
 func TestResetPasswordTokenIsOneTime(t *testing.T) {
 	s, st, _ := newSecurityHTTPTestServer(t)
 	pwd, _ := bcrypt.GenerateFromPassword([]byte("OldPass123!"), 12)
-	u, err := st.CreateUser(model.Utente{Email: "one-time@example.com", PasswordHash: string(pwd), Ruolo: model.RoleRichiedente, Nome: "One", Cognome: "Time"})
+	u, err := st.CreateUser(model.Utente{Email: "one-time@example.com", PasswordHash: string(pwd), Ruolo: model.RoleRichiedente, Nome: "One", Cognome: "Time", Attivo: true, EmailVerificata: true})
 	if err != nil {
 		t.Fatalf("create user failed: %v", err)
 	}
 
-	_, err = st.CreatePasswordResetToken(model.PasswordResetToken{Token: "tok-one-time", UserID: u.ID, Email: u.Email, ExpiresAt: time.Now().UTC().Add(30 * time.Minute)})
+	_, err = st.CreatePasswordResetToken(model.PasswordResetToken{Token: "tok-one-time", Purpose: "password_reset", UserID: u.ID, Email: u.Email, ExpiresAt: time.Now().UTC().Add(30 * time.Minute)})
 	if err != nil {
 		t.Fatalf("create reset token failed: %v", err)
 	}

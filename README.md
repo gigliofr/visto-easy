@@ -11,7 +11,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 - Backoffice: lista pratiche, cambio stato, link pagamento, invio visto, stats dashboard
 - Pagamenti: creazione sessione, query stato, webhook `payment.succeeded`
 - Webhook pagamenti idempotente con deduplicazione `event_id`/`id`
-- Notifiche email transazionali via SendGrid (quando configurato)
+- Notifiche email transazionali via SMTP/Resend (quando configurato)
 - Audit sicurezza login/rate-limit con endpoint backoffice
 - Denylist IP backoffice con persistenza datastore (riavvio-safe)
 - Macchina stati pratica con validazione transizioni
@@ -20,6 +20,7 @@ Portale di gestione richieste visto (MVP tecnico) con API multi-ruolo, workflow 
 ## API principali
 
 - `POST /api/auth/register`
+- `POST /api/auth/verify-email`
 - `POST /api/auth/login`
 - `POST /api/auth/refresh`
 - `POST /api/auth/2fa/setup`
@@ -129,6 +130,11 @@ Frontend web:
 http://localhost:8080/
 ```
 
+Landing page email:
+
+- `http://localhost:8080/verify-email?token=...`
+- `http://localhost:8080/reset-password?token=...`
+
 Script Mongo per creare o aggiornare un'utenza amministrativa:
 
 ```bash
@@ -170,6 +176,10 @@ Variabili utili:
 - `BACKOFFICE_SEED_PASSWORD=...` (minimo 8 caratteri)
 - `BACKOFFICE_FAKE_PRACTICES_ENABLED=true|false` (default: `true` fuori da production)
 - `BACKOFFICE_FAKE_USER_PASSWORD=...` (minimo 8 caratteri)
+- `BACKOFFICE_NOTIFY_EMAILS=...` elenco separato da virgola per le notifiche nuovo visto
+- `FRONTEND_VERIFY_EMAIL_URL=...` link per verifica email (default: `/verify-email?token={token}`)
+- `FRONTEND_RESET_PASSWORD_URL=...` link usato nel reset password (default: `/reset-password?token={token}`)
+- `FRONTEND_OPERATOR_INVITE_URL=...` link usato negli inviti operatori (default: `/reset-password?token={token}`)
 
 Il frontend include:
 - autenticazione (login/register/forgot/reset/logout/refresh)
@@ -216,11 +226,15 @@ S3_SECRET_KEY=
 S3_USE_SSL=true
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
-SENDGRID_API_KEY=
-SENDGRID_FROM_EMAIL=
-SENDGRID_FROM_NAME=Visto Easy
-SENDGRID_API_BASE=
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_KEY=
+MAIL_FROM=
+BACKOFFICE_NOTIFY_EMAILS=
+FRONTEND_VERIFY_EMAIL_URL=
 FRONTEND_RESET_PASSWORD_URL=
+FRONTEND_OPERATOR_INVITE_URL=
 
 # Hardening auth (opzionali)
 AUTH_RATE_LIMIT_RPM=30
@@ -243,10 +257,12 @@ SECURITY_HEADERS_HSTS=false
 
 ## Note architetturali
 
-Questa versione implementa un MVP operativo con persistenza su MongoDB (document store) e placeholder per Redis/S3/Stripe/SendGrid.
+Questa versione implementa un MVP operativo con persistenza su MongoDB (document store) e placeholder per Redis/S3/Stripe/SMTP.
 
-Notifiche email transazionali (se `SENDGRID_API_KEY` + `SENDGRID_FROM_EMAIL` sono valorizzati):
-- reset password richiesto
+Notifiche email transazionali (se `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_KEY` e `MAIL_FROM` sono valorizzati):
+- verifica registrazione richiedente
+- reset password / attivazione account
+- nuovo visto inserito per il backoffice
 - link pagamento pratica
 - conferma pagamento/visto emesso
 

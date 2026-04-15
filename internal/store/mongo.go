@@ -216,8 +216,9 @@ func (s *MongoStore) CreateUser(u model.Utente) (model.Utente, error) {
 	now := time.Now().UTC()
 	u.ID = uuid.NewString()
 	u.Email = email
-	u.Attivo = true
-	u.EmailVerificata = true
+	if strings.TrimSpace(string(u.Ruolo)) == "" {
+		u.Ruolo = model.RoleRichiedente
+	}
 	u.CreatoIl = now
 	u.AggiornatoIl = now
 	if _, err := s.users.InsertOne(ctx, u); err != nil {
@@ -256,6 +257,16 @@ func (s *MongoStore) GetUserByEmail(email string) (model.Utente, error) {
 		return model.Utente{}, ErrNotFound
 	}
 	return u, err
+}
+
+func (s *MongoStore) SetUserVerificationState(userID string, attivo, emailVerificata bool) (bool, error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+	res, err := s.users.UpdateOne(ctx, bson.M{"id": strings.TrimSpace(userID)}, bson.M{"$set": bson.M{"attivo": attivo, "emailverificata": emailVerificata, "aggiornatoil": time.Now().UTC()}})
+	if err != nil {
+		return false, err
+	}
+	return res.MatchedCount > 0, nil
 }
 
 func (s *MongoStore) GetUserByID(id string) (model.Utente, error) {
