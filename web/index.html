@@ -145,57 +145,57 @@
 
       <article class="panel hidden" id="profilo">
         <div class="panel-head">
-          <h2>Impostazioni</h2>
-          <p>Profilo, sicurezza e secondo fattore disponibili dopo l'accesso.</p>
-          <button class="btn btn-ghost" id="btnSettingsBack" type="button">Torna alla dashboard</button>
+          <h2 data-i18n="settings.title">Impostazioni</h2>
+          <p data-i18n="settings.subtitle">Profilo, sicurezza e secondo fattore disponibili dopo l'accesso.</p>
+          <button class="btn btn-ghost" id="btnSettingsBack" type="button" data-i18n="settings.back">Torna alla dashboard</button>
         </div>
         <div class="settings-grid">
           <div class="settings-shell bo-tabs-layout">
-            <nav class="bo-tabs-nav settings-tabs-nav" role="tablist" aria-label="Sezioni impostazioni">
+            <nav class="bo-tabs-nav settings-tabs-nav" role="tablist" data-i18n-aria-label="settings.tabs.label" aria-label="Sezioni impostazioni">
               <button class="nav-link active" type="button" role="tab" aria-selected="true" data-settings-tab="sicurezza">
-                <span>Sicurezza</span>
-                <span class="bo-tab-subtitle">2FA e accesso account</span>
+                <span data-i18n="settings.tab.security">Sicurezza</span>
+                <span class="bo-tab-subtitle" data-i18n="settings.tab.securitySub">2FA e accesso account</span>
               </button>
               <button class="nav-link" type="button" role="tab" aria-selected="false" data-settings-tab="account">
-                <span>Account</span>
-                <span class="bo-tab-subtitle">Dati sessione corrente</span>
+                <span data-i18n="settings.tab.account">Account</span>
+                <span class="bo-tab-subtitle" data-i18n="settings.tab.accountSub">Dati sessione corrente</span>
               </button>
               <button class="nav-link" type="button" role="tab" aria-selected="false" data-settings-tab="supporto">
-                <span>Supporto</span>
-                <span class="bo-tab-subtitle">Indicazioni operative</span>
+                <span data-i18n="settings.tab.support">Supporto</span>
+                <span class="bo-tab-subtitle" data-i18n="settings.tab.supportSub">Indicazioni operative</span>
               </button>
             </nav>
 
             <div class="bo-tabs-content settings-tabs-content">
               <section class="tab-pane show active settings-panel" role="tabpanel" data-settings-panel="sicurezza">
                 <section class="surface-block">
-                  <h3 class="section-title">Profilo e sicurezza</h3>
-                  <p class="helper-text">Gestisci il secondo fattore (2FA) dal tuo profilo.</p>
+                  <h3 class="section-title" data-i18n="settings.security.title">Profilo e sicurezza</h3>
+                  <p class="helper-text" data-i18n="settings.security.subtitle">Gestisci il secondo fattore (2FA) dal tuo profilo.</p>
                   <div class="settings-security-strip">
                     <article class="bo-detail-card">
-                      <h4>Stato 2FA</h4>
+                      <h4 data-i18n="settings.security.twofaStatus">Stato 2FA</h4>
                       <p><span id="settings2FAStatus" class="settings-pill settings-pill--warn">Non attivo</span></p>
                       <p id="settings2FAHint" class="helper-text">Il secondo fattore non e ancora abilitato su questo account.</p>
                     </article>
                   </div>
                   <article class="settings-callout settings-callout--info" aria-label="Suggerimenti sicurezza 2FA">
-                    <h4>Best practice 2FA</h4>
+                    <h4 data-i18n="settings.security.bestPractices">Best practice 2FA</h4>
                     <ul class="settings-callout-list">
-                      <li>Conserva i codici di recupero in un luogo sicuro.</li>
-                      <li>Non condividere mai codici OTP via email o chat.</li>
-                      <li>Dopo attivazione, verifica un accesso completo con 2FA.</li>
+                      <li data-i18n="settings.security.bp1">Conserva i codici di recupero in un luogo sicuro.</li>
+                      <li data-i18n="settings.security.bp2">Non condividere mai codici OTP via email o chat.</li>
+                      <li data-i18n="settings.security.bp3">Dopo attivazione, verifica un accesso completo con 2FA.</li>
                     </ul>
                   </article>
                   <div class="inline-actions">
-                    <button class="btn btn-ghost" id="btn2FASetup" type="button">Genera segreto 2FA</button>
+                    <button class="btn btn-ghost" id="btn2FASetup" type="button" data-i18n="settings.security.generate2fa">Genera segreto 2FA</button>
                   </div>
                   <form id="form2FAEnable" class="inline-form">
-                    <label>Codice da app autenticatore<input name="code" type="text" required></label>
-                    <button class="btn btn-solid" type="submit">Attiva 2FA</button>
+                    <label><span data-i18n="settings.security.authCode">Codice da app autenticatore</span><input name="code" type="text" required data-i18n-placeholder="settings.security.authCodePlaceholder"></label>
+                    <button class="btn btn-solid" type="submit" data-i18n="settings.security.enable2fa">Attiva 2FA</button>
                   </form>
                   <form id="form2FADisable" class="inline-form">
-                    <label>Codice corrente<input name="code" type="text" required></label>
-                    <button class="btn btn-ghost" type="submit">Disattiva 2FA</button>
+                    <label><span data-i18n="settings.security.currentCode">Codice corrente</span><input name="code" type="text" required data-i18n-placeholder="settings.security.currentCodePlaceholder"></label>
+                    <button class="btn btn-ghost" type="submit" data-i18n="settings.security.disable2fa">Disattiva 2FA</button>
                   </form>
                   <pre id="twofaOutput" class="mono-box"></pre>
                 </section>
@@ -203,15 +203,15 @@
 
               <section class="tab-pane hidden settings-panel" role="tabpanel" data-settings-panel="account" hidden>
                 <section class="surface-block">
-                  <h3 class="section-title">Panoramica account</h3>
-                  <p class="helper-text">Riepilogo del profilo attivo e delle azioni rapide disponibili.</p>
+                  <h3 class="section-title" data-i18n="settings.account.title">Panoramica account</h3>
+                  <p class="helper-text" data-i18n="settings.account.subtitle">Riepilogo del profilo attivo e delle azioni rapide disponibili.</p>
                   <div class="settings-info-grid">
                     <article class="bo-detail-card">
-                      <h4>Ruolo corrente</h4>
+                      <h4 data-i18n="settings.account.currentRole">Ruolo corrente</h4>
                       <p id="settingsRoleValue">-</p>
                     </article>
                     <article class="bo-detail-card">
-                      <h4>Email utente</h4>
+                      <h4 data-i18n="settings.account.userEmail">Email utente</h4>
                       <p id="settingsUserValue">-</p>
                     </article>
                   </div>
@@ -220,20 +220,20 @@
 
               <section class="tab-pane hidden settings-panel" role="tabpanel" data-settings-panel="supporto" hidden>
                 <section class="surface-block">
-                  <h3 class="section-title">Supporto operativo</h3>
-                  <p class="helper-text">Linee guida rapide per lavorare con pratiche e documenti.</p>
+                  <h3 class="section-title" data-i18n="settings.support.title">Supporto operativo</h3>
+                  <p class="helper-text" data-i18n="settings.support.subtitle">Linee guida rapide per lavorare con pratiche e documenti.</p>
                   <ol class="settings-guide-list">
                     <li class="settings-guide-item">
-                      <h4>Controlla il carico pratiche</h4>
-                      <p>Usa la dashboard backoffice per monitorare priorita, assegnazioni e scadenze operative.</p>
+                      <h4 data-i18n="settings.support.item1Title">Controlla il carico pratiche</h4>
+                      <p data-i18n="settings.support.item1Text">Usa la dashboard backoffice per monitorare priorita, assegnazioni e scadenze operative.</p>
                     </li>
                     <li class="settings-guide-item">
-                      <h4>Lavora dalla pratica selezionata</h4>
-                      <p>Dal dettaglio puoi aggiungere note interne, richiedere documenti e gestire il flusso stato.</p>
+                      <h4 data-i18n="settings.support.item2Title">Lavora dalla pratica selezionata</h4>
+                      <p data-i18n="settings.support.item2Text">Dal dettaglio puoi aggiungere note interne, richiedere documenti e gestire il flusso stato.</p>
                     </li>
                     <li class="settings-guide-item">
-                      <h4>Verifica disponibilita download</h4>
-                      <p>Il download documento e attivo quando lo storage e configurato correttamente.</p>
+                      <h4 data-i18n="settings.support.item3Title">Verifica disponibilita download</h4>
+                      <p data-i18n="settings.support.item3Text">Il download documento e attivo quando lo storage e configurato correttamente.</p>
                     </li>
                   </ol>
                 </section>
@@ -245,105 +245,105 @@
 
       <article class="panel hidden" id="richiedente">
         <div class="panel-head">
-          <h2>Area Richiedente</h2>
-          <p>Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
+          <h2 data-i18n="rich.title">Area Richiedente</h2>
+          <p data-i18n="rich.subtitle">Flusso guidato: crea una pratica, allega documenti, poi invia in revisione.</p>
         </div>
         <div class="rich-tabs-shell">
-          <ul class="nav nav-tabs rich-tabs" role="tablist" aria-label="Azioni area richiedente">
+          <ul class="nav nav-tabs rich-tabs" role="tablist" data-i18n-aria-label="rich.tabs.label" aria-label="Azioni area richiedente">
             <li class="nav-item">
-              <button class="nav-link active" type="button" role="tab" aria-selected="true" data-rich-tab="create">Crea pratica</button>
+              <button class="nav-link active" type="button" role="tab" aria-selected="true" data-rich-tab="create" data-i18n="rich.tab.create">Crea pratica</button>
             </li>
             <li class="nav-item">
-              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="documents">Carica documenti</button>
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="documents" data-i18n="rich.tab.documents">Carica documenti</button>
             </li>
             <li class="nav-item">
-              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="active">Pratiche attive</button>
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="active" data-i18n="rich.tab.active">Pratiche attive</button>
             </li>
             <li class="nav-item">
-              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="history">Storico pratiche</button>
+              <button class="nav-link" type="button" role="tab" aria-selected="false" data-rich-tab="history" data-i18n="rich.tab.history">Storico pratiche</button>
             </li>
           </ul>
 
           <div class="rich-tabs-content">
             <section class="surface-block rich-tab-panel" data-rich-panel="create">
-              <h3 class="section-title">1. Crea pratica</h3>
+              <h3 class="section-title" data-i18n="rich.create.title">1. Crea pratica</h3>
               <form id="formCreatePratica" class="inline-form">
-                <label>Tipo visto
+                <label><span data-i18n="rich.create.visaType">Tipo visto</span>
                   <select name="tipo_visto" required>
-                    <option value="" disabled selected>Seleziona un tipo visto</option>
-                    <option value="TURISMO">Turismo</option>
-                    <option value="STUDIO">Studio</option>
-                    <option value="LAVORO">Lavoro</option>
-                    <option value="BUSINESS">Business</option>
-                    <option value="TRANSITO">Transito</option>
+                    <option value="" disabled selected data-i18n="rich.create.selectVisaType">Seleziona un tipo visto</option>
+                    <option value="TURISMO" data-i18n="rich.create.visaTourism">Turismo</option>
+                    <option value="STUDIO" data-i18n="rich.create.visaStudy">Studio</option>
+                    <option value="LAVORO" data-i18n="rich.create.visaWork">Lavoro</option>
+                    <option value="BUSINESS" data-i18n="rich.create.visaBusiness">Business</option>
+                    <option value="TRANSITO" data-i18n="rich.create.visaTransit">Transito</option>
                   </select>
                 </label>
-                <label>Paese di destinazione
+                <label><span data-i18n="rich.create.destinationCountry">Paese di destinazione</span>
                   <select name="paese_dest" id="paeseSelect" required>
-                    <option value="" disabled selected>Caricamento paesi...</option>
+                    <option value="" disabled selected data-i18n="rich.create.loadingCountries">Caricamento paesi...</option>
                   </select>
                 </label>
                 <div id="richAttributesComposer" class="rich-attributes-composer"></div>
-                <button class="btn btn-solid" type="submit">Crea nuova pratica</button>
+                <button class="btn btn-solid" type="submit" data-i18n="rich.create.submit">Crea nuova pratica</button>
               </form>
-              <p class="helper-text">La pratica e la tua richiesta visto: dopo la creazione la troverai nei tab successivi.</p>
-              <p class="helper-text">La sezione 8 (dati lavorazione backoffice) resta interna e non e compilabile dal richiedente.</p>
+              <p class="helper-text" data-i18n="rich.create.help1">La pratica e la tua richiesta visto: dopo la creazione la troverai nei tab successivi.</p>
+              <p class="helper-text" data-i18n="rich.create.help2">La sezione 8 (dati lavorazione backoffice) resta interna e non e compilabile dal richiedente.</p>
               <p id="richCreateFeedback" class="helper-text rich-feedback" hidden></p>
             </section>
 
             <section class="surface-block rich-tab-panel hidden" data-rich-panel="documents" hidden>
-              <h3 class="section-title">2. Carica documenti</h3>
+              <h3 class="section-title" data-i18n="rich.documents.title">2. Carica documenti</h3>
               <form id="formDocUpload" class="inline-form">
-                <label>Pratica da aggiornare
+                <label><span data-i18n="rich.documents.practice">Pratica da aggiornare</span>
                   <select name="id" id="docPraticaSelect" required>
-                    <option value="" disabled selected>Prima crea o aggiorna una pratica</option>
+                    <option value="" disabled selected data-i18n="rich.documents.practicePlaceholder">Prima crea o aggiorna una pratica</option>
                   </select>
                 </label>
-                <label>Tipo documento
+                <label><span data-i18n="rich.documents.documentType">Tipo documento</span>
                   <select name="tipo" required>
-                    <option value="" disabled selected>Seleziona documento</option>
-                    <option value="PASSAPORTO">Passaporto</option>
-                    <option value="FOTO">Foto</option>
-                    <option value="BIGLIETTO">Prenotazione viaggio</option>
-                    <option value="ASSICURAZIONE">Assicurazione</option>
-                    <option value="ALTRO">Altro</option>
+                    <option value="" disabled selected data-i18n="rich.documents.selectDocument">Seleziona documento</option>
+                    <option value="PASSAPORTO" data-i18n="rich.documents.passport">Passaporto</option>
+                    <option value="FOTO" data-i18n="rich.documents.photo">Foto</option>
+                    <option value="BIGLIETTO" data-i18n="rich.documents.ticket">Prenotazione viaggio</option>
+                    <option value="ASSICURAZIONE" data-i18n="rich.documents.insurance">Assicurazione</option>
+                    <option value="ALTRO" data-i18n="rich.documents.other">Altro</option>
                   </select>
                 </label>
-                <label>File (immagine o PDF)
+                <label><span data-i18n="rich.documents.file">File (immagine o PDF)</span>
                   <input name="file_upload" type="file" accept="image/*,application/pdf" required>
                 </label>
                 <input name="nome_file" type="hidden">
                 <input name="mime_type" type="hidden">
                 <input name="dimensione" type="hidden">
-                <button class="btn btn-ghost" type="submit">Aggiungi documento</button>
+                <button class="btn btn-ghost" type="submit" data-i18n="rich.documents.submit">Aggiungi documento</button>
               </form>
             </section>
 
             <section class="surface-block rich-tab-panel hidden" data-rich-panel="active" hidden>
               <div class="toolbar">
-                <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button">Aggiorna pratiche</button>
+                <button class="btn btn-ghost" id="btnLoadMiePratiche" type="button" data-i18n="rich.active.refresh">Aggiorna pratiche</button>
               </div>
-              <h3 class="section-title">3. Pratiche attive</h3>
+              <h3 class="section-title" data-i18n="rich.active.title">3. Pratiche attive</h3>
               <div class="inline-form active-filters">
-                <label>Stato
+                <label><span data-i18n="rich.active.filterStatus">Stato</span>
                   <select id="activeStatusFilter" name="active_status_filter">
-                    <option value="ALL" selected>Tutti</option>
-                    <option value="BOZZA">Bozza</option>
-                    <option value="INVIATA">Inviata</option>
-                    <option value="IN_LAVORAZIONE">In lavorazione</option>
-                    <option value="INTEGRAZIONE_RICHIESTA">Integrazione richiesta</option>
-                    <option value="SOSPESA">Sospesa</option>
+                    <option value="ALL" selected data-i18n="rich.active.statusAll">Tutti</option>
+                    <option value="BOZZA" data-i18n="rich.active.statusDraft">Bozza</option>
+                    <option value="INVIATA" data-i18n="rich.active.statusSent">Inviata</option>
+                    <option value="IN_LAVORAZIONE" data-i18n="rich.active.statusWorking">In lavorazione</option>
+                    <option value="INTEGRAZIONE_RICHIESTA" data-i18n="rich.active.statusIntegration">Integrazione richiesta</option>
+                    <option value="SOSPESA" data-i18n="rich.active.statusSuspended">Sospesa</option>
                   </select>
                 </label>
-                <label>Cerca
-                  <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese">
+                <label><span data-i18n="rich.active.search">Cerca</span>
+                  <input id="activeQueryFilter" type="text" placeholder="codice, visto, paese" data-i18n-placeholder="rich.active.searchPlaceholder">
                 </label>
-                <label>Ordina per
+                <label><span data-i18n="rich.active.sort">Ordina per</span>
                   <select id="activeSortFilter" name="active_sort_filter">
-                    <option value="date_desc" selected>Piu recenti</option>
-                    <option value="date_asc">Meno recenti</option>
-                    <option value="status">Stato</option>
-                    <option value="country">Paese</option>
+                    <option value="date_desc" selected data-i18n="rich.active.sortRecent">Piu recenti</option>
+                    <option value="date_asc" data-i18n="rich.active.sortOld">Meno recenti</option>
+                    <option value="status" data-i18n="rich.active.sortStatus">Stato</option>
+                    <option value="country" data-i18n="rich.active.sortCountry">Paese</option>
                   </select>
                 </label>
               </div>
@@ -351,8 +351,8 @@
             </section>
 
             <section class="surface-block rich-tab-panel hidden" data-rich-panel="history" hidden>
-              <h3 class="section-title">Storico pratiche</h3>
-              <p class="helper-text">Elenco pratiche create in passato o gia concluse, utile per consultazione rapida.</p>
+              <h3 class="section-title" data-i18n="rich.history.title">Storico pratiche</h3>
+              <p class="helper-text" data-i18n="rich.history.subtitle">Elenco pratiche create in passato o gia concluse, utile per consultazione rapida.</p>
               <div id="storicoPratiche" class="list compact"></div>
             </section>
           </div>
@@ -361,24 +361,24 @@
 
       <article class="panel hidden" id="backoffice">
         <div class="panel-head">
-          <h2>Backoffice</h2>
-          <p>Seleziona una sezione dai tab: la vista pratiche resta ampia e leggibile.</p>
+          <h2 data-i18n="bo.title">Backoffice</h2>
+          <p data-i18n="bo.subtitle">Seleziona una sezione dai tab: la vista pratiche resta ampia e leggibile.</p>
           <div class="bo-session-strip" id="boSessionStrip">
             <span id="boSessionRole">Ruolo: ospite</span>
             <span id="boSessionUser">Utente: non autenticato</span>
-            <button class="btn btn-ghost" id="boBtnSettings" type="button" hidden>Impostazioni</button>
-            <button class="btn btn-solid" id="boBtnLogout" type="button" hidden>Esci</button>
+            <button class="btn btn-ghost" id="boBtnSettings" type="button" hidden data-i18n="hero.settings">Impostazioni</button>
+            <button class="btn btn-solid" id="boBtnLogout" type="button" hidden data-i18n="hero.logout">Esci</button>
           </div>
         </div>
         <div class="bo-tabs-layout">
-          <ul class="nav nav-tabs bo-icon-tabs" role="tablist" aria-label="Menu backoffice">
+          <ul class="nav nav-tabs bo-icon-tabs" role="tablist" data-i18n-aria-label="bo.tabs.label" aria-label="Menu backoffice">
             <li class="nav-item">
               <a id="bo-panel-pratiche-tab" class="nav-link active" href="#bo-panel-pratiche" role="tab" aria-controls="bo-panel-pratiche" aria-selected="true" data-bo-tab="pratiche" title="Pratiche">
                 <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                   <rect x="5" y="4" width="14" height="16" rx="2"/>
                   <path d="M9 8h6M9 12h6M9 16h4"/>
                 </svg>
-                <span class="bo-tab-label">Pratiche</span>
+                <span class="bo-tab-label" data-i18n="bo.tab.pratiche">Pratiche</span>
               </a>
             </li>
             <li class="nav-item">
@@ -389,7 +389,7 @@
                   <circle cx="17" cy="9" r="2"/>
                   <path d="M14.5 18a3.5 3.5 0 0 1 5.5-2.8"/>
                 </svg>
-                <span class="bo-tab-label">Utenti</span>
+                <span class="bo-tab-label" data-i18n="bo.tab.users">Utenti</span>
               </a>
             </li>
             <li class="nav-item">
@@ -398,7 +398,7 @@
                   <path d="M12 3 5 6v6c0 4.5 2.8 7.7 7 9 4.2-1.3 7-4.5 7-9V6l-7-3z"/>
                   <path d="m9.3 12 1.8 1.8 3.6-3.6"/>
                 </svg>
-                <span class="bo-tab-label">Audit</span>
+                <span class="bo-tab-label" data-i18n="bo.tab.audit">Audit</span>
               </a>
             </li>
             <li class="nav-item">
@@ -408,7 +408,7 @@
                   <path d="m10 8 6 6"/>
                   <path d="m4 20 4.5-1 8.7-8.7a1.8 1.8 0 0 0 0-2.6l-.9-.9a1.8 1.8 0 0 0-2.6 0L5 15.5 4 20z"/>
                 </svg>
-                <span class="bo-tab-label">Operazioni</span>
+                <span class="bo-tab-label" data-i18n="bo.tab.ops">Operazioni</span>
               </a>
             </li>
           </ul>
