@@ -72,6 +72,10 @@ const richState = {
   activeTab: 'create',
 };
 
+const authState = {
+  pendingEmail: '',
+};
+
 function evaluatePasswordStrength(password) {
   const value = String(password || '');
   const hasLength = value.length >= 10;
@@ -506,7 +510,7 @@ function showAuthView(view) {
   if (target === 'register') updateRegisterPasswordUI();
 }
 
-function renderRegisterPendingSubtitle(email) {
+function renderRegisterPendingSubtitle(email = authState.pendingEmail) {
   const subtitleEl = document.getElementById('registerPendingSubtitle');
   if (!subtitleEl) return;
   subtitleEl.textContent = t('auth.pending.subtitle', { email: email || '-' });
@@ -1485,18 +1489,18 @@ function wireForms() {
         };
         const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(registerPayload) });
         out('Registrazione completata', data);
+        authState.pendingEmail = registerPayload.email;
         if (data?.status === 'pending_verification') {
           notify('ok', t('auth.ok.registerPending'));
-          renderRegisterPendingSubtitle(registerPayload.email);
-          ev.currentTarget.reset();
-          showAuthView('register-pending');
-          document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view]').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.authView === 'register');
-          });
         } else {
           notify('ok', t('auth.ok.registerDone'));
-          showAuthView('login');
         }
+        renderRegisterPendingSubtitle(authState.pendingEmail);
+        ev.currentTarget.reset();
+        showAuthView('register-pending');
+        document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view]').forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.authView === 'register');
+        });
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1979,6 +1983,7 @@ export function initApp(bootMessage) {
     renderSessionInfo();
     renderSettingsAccountInfo();
     updateRegisterPasswordUI();
+    renderRegisterPendingSubtitle();
   });
   setSectionFromHash();
   applyRoleGuards();

@@ -522,7 +522,11 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verificationToken := hex.EncodeToString(verificationTokenRaw)
-	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	verifyTTLMinutes := envInt("EMAIL_VERIFY_TOKEN_TTL_MINUTES", 30)
+	if verifyTTLMinutes <= 0 {
+		verifyTTLMinutes = 30
+	}
+	expiresAt := time.Now().UTC().Add(time.Duration(verifyTTLMinutes) * time.Minute)
 	if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{Token: verificationToken, Purpose: "email_verification", UserID: u.ID, Email: u.Email, ExpiresAt: expiresAt}); err != nil {
 		writeErr(w, http.StatusInternalServerError, "errore interno")
 		return
