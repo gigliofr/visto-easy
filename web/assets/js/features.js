@@ -506,6 +506,12 @@ function showAuthView(view) {
   if (target === 'register') updateRegisterPasswordUI();
 }
 
+function renderRegisterPendingSubtitle(email) {
+  const subtitleEl = document.getElementById('registerPendingSubtitle');
+  if (!subtitleEl) return;
+  subtitleEl.textContent = t('auth.pending.subtitle', { email: email || '-' });
+}
+
 function wireAuthViews() {
   const controls = document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view], #auth .auth-desktop-actions [data-auth-view], #auth .auth-back[data-auth-view]');
   controls.forEach((el) => {
@@ -1481,8 +1487,15 @@ function wireForms() {
         out('Registrazione completata', data);
         if (data?.status === 'pending_verification') {
           notify('ok', t('auth.ok.registerPending'));
+          renderRegisterPendingSubtitle(registerPayload.email);
+          ev.currentTarget.reset();
+          showAuthView('register-pending');
+          document.querySelectorAll('#auth .auth-mobile-switch [data-auth-view]').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.authView === 'register');
+          });
         } else {
           notify('ok', t('auth.ok.registerDone'));
+          showAuthView('login');
         }
       });
     } catch (err) {

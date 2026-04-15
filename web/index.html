@@ -105,6 +105,24 @@
           <button class="btn btn-ghost auth-back" type="button" data-auth-view="login" data-i18n="auth.btn.backToLogin">Torna al login</button>
         </form>
 
+        <section class="auth-view hidden auth-pending" data-auth-view="register-pending">
+          <h3 data-i18n="auth.pending.title">Controlla la tua casella email</h3>
+          <p id="registerPendingSubtitle">Abbiamo inviato un link di attivazione alla tua email.</p>
+          <ol class="pending-steps">
+            <li data-i18n="auth.pending.step1">Apri la tua casella di posta (controlla anche spam/promozioni).</li>
+            <li data-i18n="auth.pending.step2">Clicca il pulsante di verifica presente nella mail.</li>
+            <li data-i18n="auth.pending.step3">Dopo la conferma, torna qui ed effettua il login.</li>
+          </ol>
+          <div class="auth-desktop-actions">
+            <a class="btn btn-ghost" href="https://mail.google.com" target="_blank" rel="noopener noreferrer" data-i18n="auth.pending.openGmail">Apri Gmail</a>
+            <a class="btn btn-ghost" href="https://outlook.live.com/mail/" target="_blank" rel="noopener noreferrer" data-i18n="auth.pending.openOutlook">Apri Outlook</a>
+          </div>
+          <div class="auth-desktop-actions">
+            <button class="btn btn-solid" type="button" data-auth-view="login" data-i18n="auth.pending.backLogin">Ho verificato, vai al login</button>
+            <button class="btn btn-ghost" type="button" data-auth-view="register" data-i18n="auth.pending.changeEmail">Usa un'altra email</button>
+          </div>
+        </section>
+
         <section class="auth-view hidden" data-auth-view="recovery">
           <form id="formForgot" class="inline-form">
             <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>

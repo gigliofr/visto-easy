@@ -5,20 +5,24 @@
     it: {
       title: 'Registrazione completata con successo.',
       subtitle: 'Stiamo verificando il tuo indirizzo email per attivare il tuo profilo e permetterti di usare tutti i servizi.',
-      checking: 'Verifica in corso...',
+      checking: 'Premi "Conferma email" per completare la verifica dell\'account.',
+      confirming: 'Verifica in corso...',
       noToken: 'Link non valido: token mancante. Apri il link ricevuto via email.',
       failed: 'Verifica non riuscita',
       success: 'Email verificata. Il tuo account e ora attivo.',
+      verifyNow: 'Conferma email',
       login: 'Vai al login',
       home: 'Torna alla home',
     },
     en: {
       title: 'Registration completed successfully.',
       subtitle: 'We are verifying your email address to activate your profile and unlock all services.',
-      checking: 'Verification in progress...',
+      checking: 'Press "Confirm email" to complete account verification.',
+      confirming: 'Verification in progress...',
       noToken: 'Invalid link: missing token. Open the link received by email.',
       failed: 'Verification failed',
       success: 'Email verified. Your account is now active.',
+      verifyNow: 'Confirm email',
       login: 'Go to login',
       home: 'Back to home',
     },
@@ -31,6 +35,7 @@
   const titleText = document.getElementById('titleText');
   const subtitleText = document.getElementById('subtitleText');
   const resultBox = document.getElementById('resultBox');
+  const btnVerifyNow = document.getElementById('btnVerifyNow');
   const btnLogin = document.getElementById('btnLogin');
   const btnHome = document.getElementById('btnHome');
 
@@ -102,6 +107,7 @@
     document.documentElement.lang = lang;
     titleText.textContent = t('title');
     subtitleText.textContent = t('subtitle');
+    btnVerifyNow.textContent = t('verifyNow');
     btnLogin.textContent = t('login');
     btnHome.textContent = t('home');
 
@@ -130,15 +136,23 @@
     resultBox.className = 'status err';
     resultBox.dataset.state = 'error';
     resultBox.textContent = t('noToken');
+    btnVerifyNow.disabled = true;
     return;
   }
 
-  fetch('/api/auth/verify-email', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
-  })
-    .then(async (response) => {
+  btnVerifyNow.addEventListener('click', async () => {
+    if (btnVerifyNow.disabled) return;
+    btnVerifyNow.disabled = true;
+    resultBox.className = 'status';
+    resultBox.dataset.state = 'checking';
+    resultBox.textContent = t('confirming');
+
+    try {
+      const response = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error((data && (data.error || data.message)) || t('failed'));
@@ -147,10 +161,11 @@
       resultBox.className = 'status ok';
       resultBox.dataset.state = 'success';
       resultBox.textContent = t('success');
-    })
-    .catch((err) => {
+    } catch (err) {
       resultBox.className = 'status err';
       resultBox.dataset.state = 'error';
       resultBox.textContent = err.message || t('failed');
-    });
+      btnVerifyNow.disabled = false;
+    }
+  });
 })();
