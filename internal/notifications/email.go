@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"mime/quotedprintable"
 	"mime/multipart"
 	"net/smtp"
 	"net/textproto"
@@ -89,7 +90,12 @@ func (s *smtpSender) Send(to, subject, textBody, htmlBody string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := plainPart.Write([]byte(textBody)); err != nil {
+	plainQP := quotedprintable.NewWriter(plainPart)
+	if _, err := plainQP.Write([]byte(textBody)); err != nil {
+		_ = plainQP.Close()
+		return err
+	}
+	if err := plainQP.Close(); err != nil {
 		return err
 	}
 	htmlHeader := textproto.MIMEHeader{}
@@ -99,7 +105,12 @@ func (s *smtpSender) Send(to, subject, textBody, htmlBody string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := htmlPart.Write([]byte(htmlBody)); err != nil {
+	htmlQP := quotedprintable.NewWriter(htmlPart)
+	if _, err := htmlQP.Write([]byte(htmlBody)); err != nil {
+		_ = htmlQP.Close()
+		return err
+	}
+	if err := htmlQP.Close(); err != nil {
 		return err
 	}
 	if err := writer.Close(); err != nil {
