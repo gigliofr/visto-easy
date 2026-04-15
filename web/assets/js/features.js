@@ -74,19 +74,26 @@ const richState = {
 
 function evaluatePasswordStrength(password) {
   const value = String(password || '');
-  let score = 0;
-  if (value.length >= 10) score += 1;
-  if (/[a-z]/.test(value)) score += 1;
-  if (/[A-Z]/.test(value)) score += 1;
-  if (/\d/.test(value)) score += 1;
-  if (/[^A-Za-z0-9]/.test(value)) score += 1;
-  if (value.length >= 14) score += 1;
+  const hasLength = value.length >= 10;
+  const hasLower = /[a-z]/.test(value);
+  const hasUpper = /[A-Z]/.test(value);
+  const hasDigit = /\d/.test(value);
+  const hasSymbol = /[^A-Za-z0-9]/.test(value);
+  const classes = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
+  const score = (hasLength ? 2 : 0) + classes;
 
+  let tone = 'weak';
   let label = t('auth.password.level.weak');
-  if (score >= 4) label = t('auth.password.level.medium');
-  if (score >= 6) label = t('auth.password.level.strong');
+  if (hasLength && classes >= 3) {
+    tone = 'medium';
+    label = t('auth.password.level.medium');
+  }
+  if (hasLength && classes >= 4) {
+    tone = 'strong';
+    label = t('auth.password.level.strong');
+  }
 
-  return { score: Math.min(score, 6), label };
+  return { score: Math.min(score, 6), label, tone };
 }
 
 function isRegistrationPasswordStrong(password) {
@@ -104,16 +111,22 @@ function updateRegisterPasswordUI() {
   const barEl = document.getElementById('registerPasswordStrengthBar');
   const labelEl = document.getElementById('registerPasswordStrengthLabel');
   const hintEl = document.getElementById('registerPasswordMatchHint');
-  if (!passwordEl || !confirmEl || !barEl || !labelEl || !hintEl) return;
+  if (!passwordEl) return;
 
-  const { score, label } = evaluatePasswordStrength(passwordEl.value);
+  const { score, label, tone } = evaluatePasswordStrength(passwordEl.value);
   const pct = Math.max(12, Math.round((score / 6) * 100));
-  const color = score <= 2 ? '#c62a26' : (score <= 4 ? '#b7791f' : '#1f7a4d');
-  barEl.style.background = `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, #ecf0f6 ${pct}%, #ecf0f6 100%)`;
-  labelEl.textContent = t('auth.passwordStrength', { level: label });
+  const color = tone === 'strong' ? '#1f7a4d' : (tone === 'medium' ? '#b7791f' : '#c62a26');
+  if (barEl) {
+    barEl.style.background = `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, #ecf0f6 ${pct}%, #ecf0f6 100%)`;
+  }
+  if (labelEl) {
+    labelEl.textContent = t('auth.passwordStrength', { level: label });
+  }
 
-  const mismatch = confirmEl.value.length > 0 && passwordEl.value !== confirmEl.value;
-  hintEl.hidden = !mismatch;
+  if (confirmEl && hintEl) {
+    const mismatch = confirmEl.value.length > 0 && passwordEl.value !== confirmEl.value;
+    hintEl.hidden = !mismatch;
+  }
 }
 
 function parseTs(value) {
@@ -1352,13 +1365,25 @@ async function loadBODashboard() {
 }
 
 function wireForms() {
+  const registerForm = document.getElementById('formRegister');
   const registerPassword = document.getElementById('registerPassword');
   const registerPasswordConfirm = document.getElementById('registerPasswordConfirm');
-  if (registerPassword && registerPasswordConfirm) {
+  if (registerForm && registerPassword && registerPasswordConfirm) {
     ['input', 'keyup', 'change', 'blur', 'focus'].forEach((eventName) => {
       registerPassword.addEventListener(eventName, updateRegisterPasswordUI);
       registerPasswordConfirm.addEventListener(eventName, updateRegisterPasswordUI);
     });
+
+    // Capture edge cases like autofill or paste that may bypass direct listeners.
+    ['input', 'keyup', 'change', 'paste', 'focusin'].forEach((eventName) => {
+      registerForm.addEventListener(eventName, (ev) => {
+        const target = ev.target;
+        if (target === registerPassword || target === registerPasswordConfirm) {
+          window.requestAnimationFrame(updateRegisterPasswordUI);
+        }
+      });
+    });
+
     updateRegisterPasswordUI();
   }
 
