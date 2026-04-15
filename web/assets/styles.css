@@ -1006,6 +1006,37 @@ body[data-auth="1"] #btnLogout {
   margin-bottom: 6px;
 }
 
+.password-field {
+  position: relative;
+  display: grid;
+}
+
+.password-field input {
+  padding-right: 96px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  border-radius: 999px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.password-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
+}
+
 .password-strength-bar {
   height: 8px;
   border-radius: 999px;
@@ -1018,6 +1049,37 @@ body[data-auth="1"] #btnLogout {
   font-size: 0.84rem;
   font-weight: 700;
   color: #4b5563;
+}
+
+.password-suggestions {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.password-suggestions li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.password-suggestions li::before {
+  content: "\25CB";
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+
+.password-suggestions li.met {
+  color: #1f7a4d;
+}
+
+.password-suggestions li.met::before {
+  content: "\2713";
+  color: #1f7a4d;
 }
 
 #registerPasswordMatchHint {

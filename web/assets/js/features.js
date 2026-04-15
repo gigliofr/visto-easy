@@ -93,7 +93,18 @@ function evaluatePasswordStrength(password) {
     label = t('auth.password.level.strong');
   }
 
-  return { score: Math.min(score, 6), label, tone };
+  return {
+    score: Math.min(score, 6),
+    label,
+    tone,
+    checks: {
+      length: hasLength,
+      lower: hasLower,
+      upper: hasUpper,
+      number: hasDigit,
+      special: hasSymbol,
+    },
+  };
 }
 
 function isRegistrationPasswordStrong(password) {
@@ -111,9 +122,14 @@ function updateRegisterPasswordUI() {
   const barEl = document.getElementById('registerPasswordStrengthBar');
   const labelEl = document.getElementById('registerPasswordStrengthLabel');
   const hintEl = document.getElementById('registerPasswordMatchHint');
+  const suggestionLengthEl = document.getElementById('registerPasswordSuggestionLength');
+  const suggestionUpperEl = document.getElementById('registerPasswordSuggestionUpper');
+  const suggestionLowerEl = document.getElementById('registerPasswordSuggestionLower');
+  const suggestionNumberEl = document.getElementById('registerPasswordSuggestionNumber');
+  const suggestionSpecialEl = document.getElementById('registerPasswordSuggestionSpecial');
   if (!passwordEl) return;
 
-  const { score, label, tone } = evaluatePasswordStrength(passwordEl.value);
+  const { score, label, tone, checks } = evaluatePasswordStrength(passwordEl.value);
   const pct = Math.max(12, Math.round((score / 6) * 100));
   const color = tone === 'strong' ? '#1f7a4d' : (tone === 'medium' ? '#b7791f' : '#c62a26');
   if (barEl) {
@@ -123,10 +139,37 @@ function updateRegisterPasswordUI() {
     labelEl.textContent = t('auth.passwordStrength', { level: label });
   }
 
+  if (suggestionLengthEl) suggestionLengthEl.classList.toggle('met', checks.length);
+  if (suggestionUpperEl) suggestionUpperEl.classList.toggle('met', checks.upper);
+  if (suggestionLowerEl) suggestionLowerEl.classList.toggle('met', checks.lower);
+  if (suggestionNumberEl) suggestionNumberEl.classList.toggle('met', checks.number);
+  if (suggestionSpecialEl) suggestionSpecialEl.classList.toggle('met', checks.special);
+
   if (confirmEl && hintEl) {
     const mismatch = confirmEl.value.length > 0 && passwordEl.value !== confirmEl.value;
     hintEl.hidden = !mismatch;
   }
+}
+
+function wirePasswordToggle(inputId, toggleId) {
+  const inputEl = document.getElementById(inputId);
+  const toggleEl = document.getElementById(toggleId);
+  if (!inputEl || !toggleEl) return;
+
+  const sync = () => {
+    const isVisible = inputEl.type === 'text';
+    const key = isVisible ? 'auth.passwordToggleHide' : 'auth.passwordToggleShow';
+    toggleEl.textContent = t(key);
+    toggleEl.setAttribute('aria-label', t(key));
+    toggleEl.setAttribute('aria-pressed', isVisible ? 'true' : 'false');
+  };
+
+  toggleEl.addEventListener('click', () => {
+    inputEl.type = inputEl.type === 'password' ? 'text' : 'password';
+    sync();
+  });
+
+  sync();
 }
 
 function parseTs(value) {
@@ -1386,6 +1429,9 @@ function wireForms() {
 
     updateRegisterPasswordUI();
   }
+
+  wirePasswordToggle('registerPassword', 'registerPasswordToggle');
+  wirePasswordToggle('registerPasswordConfirm', 'registerPasswordConfirmToggle');
 
   document.getElementById('formLogin').addEventListener('submit', async (ev) => {
     ev.preventDefault();

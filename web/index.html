@@ -68,13 +68,32 @@
           <label><span data-i18n="auth.label.nome">Nome</span><input name="nome" type="text" required></label>
           <label><span data-i18n="auth.label.cognome">Cognome</span><input name="cognome" type="text" required></label>
           <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>
-          <label><span data-i18n="auth.label.password">Password</span><input id="registerPassword" name="password" type="password" required minlength="10"></label>
+          <label>
+            <span data-i18n="auth.label.password">Password</span>
+            <div class="password-field">
+              <input id="registerPassword" name="password" type="password" required minlength="10" aria-describedby="registerPasswordHelp registerPasswordStrengthLabel registerPasswordSuggestions">
+              <button id="registerPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
+            </div>
+          </label>
           <div class="password-strength" id="registerPasswordStrength" aria-live="polite">
             <div class="password-strength-bar" id="registerPasswordStrengthBar"></div>
-            <p class="password-strength-label" id="registerPasswordStrengthLabel" data-i18n="auth.passwordStrength">Forza password: Scarso</p>
-            <p class="helper-text" data-i18n="auth.passwordRules">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
+            <p class="password-strength-label" id="registerPasswordStrengthLabel" aria-live="polite" data-i18n="auth.passwordStrength">Forza password: Scarso</p>
+            <p class="helper-text" id="registerPasswordHelp" data-i18n="auth.passwordRules">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
+            <ul class="password-suggestions" id="registerPasswordSuggestions" aria-label="Suggerimenti password">
+              <li id="registerPasswordSuggestionLength" data-i18n="auth.passwordSuggestion.length">Almeno 10 caratteri.</li>
+              <li id="registerPasswordSuggestionUpper" data-i18n="auth.passwordSuggestion.upper">Una o piu maiuscole.</li>
+              <li id="registerPasswordSuggestionLower" data-i18n="auth.passwordSuggestion.lower">Una o piu minuscole.</li>
+              <li id="registerPasswordSuggestionNumber" data-i18n="auth.passwordSuggestion.number">Uno o piu numeri.</li>
+              <li id="registerPasswordSuggestionSpecial" data-i18n="auth.passwordSuggestion.special">Uno o piu caratteri speciali.</li>
+            </ul>
           </div>
-          <label><span data-i18n="auth.label.passwordConfirm">Conferma password</span><input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10"></label>
+          <label>
+            <span data-i18n="auth.label.passwordConfirm">Conferma password</span>
+            <div class="password-field">
+              <input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10" aria-describedby="registerPasswordMatchHint">
+              <button id="registerPasswordConfirmToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
+            </div>
+          </label>
           <p id="registerPasswordMatchHint" class="helper-text" hidden data-i18n="auth.passwordMismatch">Le password non coincidono.</p>
           <button class="btn btn-solid" type="submit" data-i18n="auth.btn.createAccount">Conferma creazione account</button>
           <button class="btn btn-ghost auth-back" type="button" data-auth-view="login" data-i18n="auth.btn.backToLogin">Torna al login</button>
