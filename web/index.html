@@ -55,7 +55,13 @@
 
         <form id="formLogin" class="inline-form auth-view" data-auth-view="login">
           <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required placeholder="you@example.com"></label>
-          <label><span data-i18n="auth.label.password">Password</span><input name="password" type="password" required minlength="8"></label>
+          <label>
+            <span data-i18n="auth.label.password">Password</span>
+            <div class="password-field">
+              <input id="loginPassword" name="password" type="password" required minlength="8">
+              <button id="loginPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
+            </div>
+          </label>
           <button class="btn btn-solid" type="submit" data-i18n="auth.btn.login">Accedi</button>
         </form>
 
@@ -106,7 +112,13 @@
           </form>
           <form id="formReset" class="inline-form">
             <label><span data-i18n="auth.label.token">Token</span><input name="token" type="text" required></label>
-            <label><span data-i18n="auth.label.newPassword">Nuova password</span><input name="new_password" type="password" required minlength="8"></label>
+            <label>
+              <span data-i18n="auth.label.newPassword">Nuova password</span>
+              <div class="password-field">
+                <input id="resetNewPassword" name="new_password" type="password" required minlength="8">
+                <button id="resetNewPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
+              </div>
+            </label>
             <button class="btn btn-solid" type="submit" data-i18n="auth.btn.confirmReset">Conferma reset password</button>
           </form>
           <button class="btn btn-ghost auth-back" type="button" data-auth-view="login" data-i18n="auth.btn.backToLogin">Torna al login</button>

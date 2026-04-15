@@ -1432,6 +1432,8 @@ function wireForms() {
 
   wirePasswordToggle('registerPassword', 'registerPasswordToggle');
   wirePasswordToggle('registerPasswordConfirm', 'registerPasswordConfirmToggle');
+  wirePasswordToggle('loginPassword', 'loginPasswordToggle');
+  wirePasswordToggle('resetNewPassword', 'resetNewPasswordToggle');
 
   document.getElementById('formLogin').addEventListener('submit', async (ev) => {
     ev.preventDefault();
