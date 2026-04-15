@@ -21,6 +21,7 @@ import {
   setSession,
   state,
 } from './session.js';
+import { initI18n, t } from './i18n.js';
 
 const FALLBACK_COUNTRIES = [
   { code: 'IT', label: 'Italia', flag: '🇮🇹' },
@@ -81,9 +82,9 @@ function evaluatePasswordStrength(password) {
   if (/[^A-Za-z0-9]/.test(value)) score += 1;
   if (value.length >= 14) score += 1;
 
-  let label = 'Scarso';
-  if (score >= 4) label = 'Medio';
-  if (score >= 6) label = 'Eccellente';
+  let label = t('auth.password.level.weak');
+  if (score >= 4) label = t('auth.password.level.medium');
+  if (score >= 6) label = t('auth.password.level.strong');
 
   return { score: Math.min(score, 6), label };
 }
@@ -109,7 +110,7 @@ function updateRegisterPasswordUI() {
   const pct = Math.max(12, Math.round((score / 6) * 100));
   const color = score <= 2 ? '#c62a26' : (score <= 4 ? '#b7791f' : '#1f7a4d');
   barEl.style.background = `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, #ecf0f6 ${pct}%, #ecf0f6 100%)`;
-  labelEl.textContent = `Forza password: ${label}`;
+  labelEl.textContent = t('auth.passwordStrength', { level: label });
 
   const mismatch = confirmEl.value.length > 0 && passwordEl.value !== confirmEl.value;
   hintEl.hidden = !mismatch;
@@ -446,6 +447,7 @@ function showAuthView(view) {
       el.classList.remove('active');
     }
   });
+  if (target === 'register') updateRegisterPasswordUI();
 }
 
 function wireAuthViews() {
@@ -483,7 +485,7 @@ function populateDocPraticaSelect(pratiche, preferredID = '') {
 
 async function loadMiePratiche(preferredPraticaID = '') {
   if (!hasRichiedenteRole()) {
-    notify('err', 'Azione riservata al ruolo RICHIEDENTE');
+    notify('err', t('ops.err.richOnly'));
     return;
   }
   const data = await api('/api/pratiche/');
@@ -514,7 +516,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
         await withBusy(ev.currentTarget, async () => {
           const res = await api(`/api/pratiche/${praticaID}/submit`, { method: 'POST' });
           out('Pratica submit', res);
-          notify('ok', 'Pratica inviata');
+          notify('ok', t('ops.ok.practiceSubmitted'));
           await loadMiePratiche();
         });
       } catch (err) {
@@ -529,7 +531,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
           await api(`/api/pratiche/${praticaID}`, { method: 'DELETE' });
           removePracticeFromHistory(praticaID);
           out('Pratica eliminata', { id: praticaID });
-          notify('ok', 'Pratica eliminata');
+          notify('ok', t('ops.ok.practiceDeleted'));
           await loadMiePratiche();
         });
       } catch (err) {
@@ -544,7 +546,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
           const select = document.getElementById('docPraticaSelect');
           if (select) select.value = praticaID;
           out(`Documenti pratica ${praticaID}`, docs);
-          notify('ok', `Pratica selezionata per upload documenti: ${praticaID}`);
+          notify('ok', t('ops.ok.practiceDocTarget', { id: praticaID }));
         });
       } catch (err) {
         notify('err', extractErrMessage(err));
@@ -856,7 +858,7 @@ function renderBackofficeDetail(pratica) {
       await withBusy(ev.currentTarget, async () => {
         const userID = getBackofficeUserId();
         if (!userID) {
-          notify('err', 'Utente backoffice non disponibile');
+          notify('err', t('ops.err.backofficeUserMissing'));
           return;
         }
         const data = await api(`/api/bo/pratiche/${pratica.id}/assegna`, {
@@ -864,7 +866,7 @@ function renderBackofficeDetail(pratica) {
           body: JSON.stringify({ operatore_id: userID }),
         });
         out('BO assegna a me', data);
-        notify('ok', 'Pratica assegnata a te');
+        notify('ok', t('ops.ok.practiceAssignedToMe'));
         await loadBOPratiche();
       });
     } catch (err) {
@@ -880,7 +882,7 @@ function renderBackofficeDetail(pratica) {
     const input = detail.querySelector('#boDetailInternalNote');
     const messaggio = String(input?.value || '').trim();
     if (!messaggio) {
-      notify('err', 'Inserisci un testo per la nota interna.');
+      notify('err', t('ops.err.internalNoteEmpty'));
       return;
     }
     try {
@@ -890,7 +892,7 @@ function renderBackofficeDetail(pratica) {
           body: JSON.stringify({ messaggio, interna: true }),
         });
         out('BO aggiungi nota interna dettaglio', data);
-        notify('ok', 'Nota interna aggiunta');
+        notify('ok', t('ops.ok.internalNoteAdded'));
         await loadBOPratiche();
       });
     } catch (err) {
@@ -1034,7 +1036,7 @@ function renderBONewPratiche() {
             body: JSON.stringify({ operatore_id: userID }),
           });
           out('BO assegna nuova pratica', data);
-          notify('ok', 'Pratica assegnata');
+          notify('ok', t('ops.ok.practiceAssigned'));
           await loadBOPratiche();
         });
       } catch (err) {
@@ -1244,7 +1246,7 @@ function computeTopActions(items, take) {
 
 async function loadBOPratiche(query = {}) {
   if (!hasBackofficeRole()) {
-    notify('err', 'Azione riservata al backoffice');
+    notify('err', t('ops.err.backofficeOnly'));
     return [];
   }
   if (query && Object.keys(query).length > 0) {
@@ -1275,7 +1277,7 @@ async function loadBOPratiche(query = {}) {
 
 async function loadBOUsers() {
   if (!hasBackofficeRole()) {
-    notify('err', 'Azione riservata al backoffice');
+    notify('err', t('ops.err.backofficeOnly'));
     return [];
   }
   const data = await api('/api/bo/utenti?page=1&page_size=200');
@@ -1324,7 +1326,7 @@ async function loadBOUsers() {
 
 async function loadBOAudit() {
   if (!hasBackofficeRole()) {
-    notify('err', 'Azione riservata al backoffice');
+    notify('err', t('ops.err.backofficeOnly'));
     return [];
   }
   const data = await api('/api/bo/audit-events?page=1&page_size=30');
@@ -1353,8 +1355,10 @@ function wireForms() {
   const registerPassword = document.getElementById('registerPassword');
   const registerPasswordConfirm = document.getElementById('registerPasswordConfirm');
   if (registerPassword && registerPasswordConfirm) {
-    registerPassword.addEventListener('input', updateRegisterPasswordUI);
-    registerPasswordConfirm.addEventListener('input', updateRegisterPasswordUI);
+    ['input', 'keyup', 'change', 'blur', 'focus'].forEach((eventName) => {
+      registerPassword.addEventListener(eventName, updateRegisterPasswordUI);
+      registerPasswordConfirm.addEventListener(eventName, updateRegisterPasswordUI);
+    });
     updateRegisterPasswordUI();
   }
 
@@ -1371,7 +1375,7 @@ function wireForms() {
         renderSessionInfo();
         applyRoleGuards();
         out('Login completato', { user: data.user });
-        notify('ok', 'Login completato');
+        notify('ok', t('auth.ok.loginDone'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1387,11 +1391,11 @@ function wireForms() {
         const password = String(payload.password || '');
         const passwordConfirm = String(payload.password_confirm || '');
         if (password !== passwordConfirm) {
-          notify('err', 'Le password non coincidono');
+          notify('err', t('auth.err.passwordMismatch'));
           return;
         }
         if (!isRegistrationPasswordStrong(password)) {
-          notify('err', 'Password troppo debole: usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli');
+          notify('err', t('auth.err.passwordWeak'));
           return;
         }
         const registerPayload = {
@@ -1403,9 +1407,9 @@ function wireForms() {
         const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(registerPayload) });
         out('Registrazione completata', data);
         if (data?.status === 'pending_verification') {
-          notify('ok', "Registrazione completata. Controlla la tua email per attivare l'account.");
+          notify('ok', t('auth.ok.registerPending'));
         } else {
-          notify('ok', 'Registrazione completata');
+          notify('ok', t('auth.ok.registerDone'));
         }
       });
     } catch (err) {
@@ -1421,7 +1425,7 @@ function wireForms() {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify(payload) });
         out('Forgot password', data);
-        notify('ok', 'Richiesta reset inviata');
+        notify('ok', t('auth.ok.forgotSent'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1436,7 +1440,7 @@ function wireForms() {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(payload) });
         out('Reset password', data);
-        notify('ok', 'Password aggiornata');
+        notify('ok', t('auth.ok.passwordUpdated'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1449,7 +1453,7 @@ function wireForms() {
         const data = await api('/api/auth/2fa/setup', { method: 'POST', body: '{}' });
         els.twofaOutput.textContent = JSON.stringify(data, null, 2);
         out('2FA setup', data);
-        notify('ok', '2FA setup completato');
+        notify('ok', t('ops.ok.twofaSetupDone'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1466,7 +1470,7 @@ function wireForms() {
         state.user = { ...(state.user || {}), totp_enabled: true };
         renderSettingsAccountInfo();
         out('2FA enable', data);
-        notify('ok', '2FA abilitato');
+        notify('ok', t('ops.ok.twofaEnabled'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1483,7 +1487,7 @@ function wireForms() {
         state.user = { ...(state.user || {}), totp_enabled: false };
         renderSettingsAccountInfo();
         out('2FA disable', data);
-        notify('ok', '2FA disabilitato');
+        notify('ok', t('ops.ok.twofaDisabled'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1521,7 +1525,7 @@ function wireForms() {
           }),
         });
         out('Pratica creata', data);
-        notify('ok', 'Pratica creata');
+        notify('ok', t('ops.ok.practiceCreated'));
         const createdID = data.id || data.pratica?.id || '';
         if (feedback) {
           const code = data.codice || data.pratica?.codice || createdID || 'nuova pratica';
@@ -1555,7 +1559,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         if (!payload.id) {
-          notify('err', 'Seleziona prima una pratica');
+          notify('err', t('ops.err.selectPracticeFirst'));
           return;
         }
         const data = await api(`/api/pratiche/${payload.id}/documenti`, {
@@ -1568,7 +1572,7 @@ function wireForms() {
           }),
         });
         out('Documento aggiunto', data);
-        notify('ok', 'Documento registrato');
+        notify('ok', t('ops.ok.documentRegistered'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1583,7 +1587,7 @@ function wireForms() {
         const payload = formJson(ev.currentTarget);
         boState.page = 1;
         await loadBOPratiche({ q: payload.q, stato: payload.stato, priorita: payload.priorita, paese_dest: payload.paese_dest, tipo_visto: payload.tipo_visto });
-        notify('ok', 'Filtri applicati');
+        notify('ok', t('ops.ok.filtersApplied'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1593,7 +1597,7 @@ function wireForms() {
   document.getElementById('btnLoadUsers').addEventListener('click', async (ev) => {
     try {
       await withBusy(ev.currentTarget, () => loadBOUsers());
-      notify('ok', 'Utenti aggiornati');
+      notify('ok', t('ops.ok.usersUpdated'));
     } catch (err) {
       notify('err', extractErrMessage(err));
     }
@@ -1622,7 +1626,7 @@ function wireForms() {
               : `Invito creato. Token: ${data.invite_token || '-'}`;
           }
           out('BO invito operatore', data);
-          notify('ok', 'Invito operatore inviato');
+          notify('ok', t('ops.ok.operatorInviteSent'));
           ev.currentTarget.reset();
           setBOInviteOperatorBox(false);
           showBOUsersView('operatori');
@@ -1638,7 +1642,7 @@ function wireForms() {
   document.getElementById('btnLoadAudit').addEventListener('click', async (ev) => {
     try {
       await withBusy(ev.currentTarget, () => loadBOAudit());
-      notify('ok', 'Audit aggiornato');
+      notify('ok', t('ops.ok.auditUpdated'));
     } catch (err) {
       notify('err', extractErrMessage(err));
     }
@@ -1657,7 +1661,7 @@ function wireForms() {
           body: JSON.stringify({ stato: payload.stato, nota: payload.nota }),
         });
         out('BO cambio stato', data);
-        notify('ok', 'Stato pratica aggiornato');
+        notify('ok', t('ops.ok.practiceStateUpdated'));
         await loadBOPratiche();
       });
     } catch (err) {
@@ -1681,7 +1685,7 @@ function wireForms() {
           }),
         });
         out('BO aggiungi nota', data);
-        notify('ok', 'Nota aggiunta');
+        notify('ok', t('ops.ok.noteAdded'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1701,7 +1705,7 @@ function wireForms() {
           body: JSON.stringify({ operatore_id: payload.operatore_id }),
         });
         out('BO assegna operatore', data);
-        notify('ok', 'Operatore assegnato');
+        notify('ok', t('ops.ok.operatorAssigned'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1721,7 +1725,7 @@ function wireForms() {
           body: JSON.stringify({ documento: payload.documento, nota: payload.nota }),
         });
         out('BO richiedi documento', data);
-        notify('ok', 'Richiesta documento inviata');
+        notify('ok', t('ops.ok.documentRequestSent'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1741,7 +1745,7 @@ function wireForms() {
           body: JSON.stringify({ provider: payload.provider || 'stripe', importo: Number(payload.importo) }),
         });
         out('BO crea link pagamento', data);
-        notify('ok', 'Link pagamento creato');
+        notify('ok', t('ops.ok.paymentLinkCreated'));
       });
     } catch (err) {
       notify('err', extractErrMessage(err));
@@ -1753,7 +1757,7 @@ function wireSessionButtons() {
   els.btnSaveApiBase.addEventListener('click', () => {
     saveApiBase(els.apiBaseInput.value);
     renderSessionInfo();
-    notify('ok', state.apiBase ? `API base salvata: ${state.apiBase}` : 'API base reimpostata su locale');
+    notify('ok', state.apiBase ? t('ops.ok.apiBaseSaved', { apiBase: state.apiBase }) : t('ops.ok.apiBaseReset'));
     out('API base aggiornata', { api_base: state.apiBase || '(relativa)' });
   });
 
@@ -1764,7 +1768,7 @@ function wireSessionButtons() {
         renderSessionInfo();
         applyRoleGuards();
         out('Logout locale', { status: 'no_refresh_token' });
-        notify('ok', 'Sessione locale chiusa');
+        notify('ok', t('ops.ok.localSessionClosed'));
         return;
       }
       const data = await api('/api/auth/logout', {
@@ -1776,7 +1780,7 @@ function wireSessionButtons() {
       renderSessionInfo();
       applyRoleGuards();
       out('Logout server', data);
-      notify('ok', 'Logout completato');
+      notify('ok', t('ops.ok.logoutDone'));
     });
   };
 
@@ -1804,7 +1808,7 @@ function wireSessionButtons() {
         await withBusy(ev.currentTarget, async () => {
           if (!state.refreshToken) {
             out('Refresh saltato', { reason: 'missing refresh token' });
-            notify('err', 'Refresh token mancante');
+            notify('err', t('ops.err.refreshTokenMissing'));
             return;
           }
           const data = await api('/api/auth/refresh', {
@@ -1815,7 +1819,7 @@ function wireSessionButtons() {
           renderSessionInfo();
           applyRoleGuards();
           out('Sessione aggiornata', { status: 'ok' });
-          notify('ok', 'Sessione aggiornata');
+          notify('ok', t('ops.ok.sessionRefreshed'));
         });
       } catch (err) {
         notify('err', extractErrMessage(err));
@@ -1864,6 +1868,7 @@ export function initApp(bootMessage) {
     }
   }
 
+  initI18n();
   renderSessionInfo();
   boState.pageSize = readBOPageSize();
   renderSettingsAccountInfo();
@@ -1884,10 +1889,15 @@ export function initApp(bootMessage) {
   wireActivePracticeFilters();
   wireDocUploadMetadata();
   loadCountriesIntoSelect().catch(() => {});
+  window.addEventListener('app:lang-change', () => {
+    renderSessionInfo();
+    renderSettingsAccountInfo();
+    updateRegisterPasswordUI();
+  });
   setSectionFromHash();
   applyRoleGuards();
   if (deniedBackofficeByRole) {
-    notify('err', 'Il tuo account non ha accesso al backoffice.');
+    notify('err', t('ops.err.backofficeAccessDenied'));
   }
   window.addEventListener('hashchange', () => {
     setSectionFromHash();

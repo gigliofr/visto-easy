@@ -16,19 +16,23 @@
     <section class="hero container">
       <div class="hero-copy">
         <p class="eyebrow">Visto Easy</p>
-        <p class="hero-mode-title">Piattaforma visti</p>
-        <h1>Un flusso chiaro per ogni pratica.</h1>
-        <p class="subtitle">Richiedenti e backoffice nello stesso spazio, con stato pratica, documenti e operazioni sempre leggibili.</p>
-        <p class="hero-kicker">Un’interfaccia più sobria, più leggibile e più vicina al lavoro operativo reale.</p>
+        <p class="hero-mode-title" data-i18n="hero.modeTitle">Piattaforma visti</p>
+        <h1 data-i18n="hero.title">Un flusso chiaro per ogni pratica.</h1>
+        <p class="subtitle" data-i18n="hero.subtitle">Richiedenti e backoffice nello stesso spazio, con stato pratica, documenti e operazioni sempre leggibili.</p>
+        <p class="hero-kicker" data-i18n="hero.kicker">Un’interfaccia più sobria, più leggibile e più vicina al lavoro operativo reale.</p>
       </div>
       <div class="hero-art" aria-hidden="true">
         <img src="/assets/hero-illustration.svg" alt="">
       </div>
       <div class="hero-meta">
+        <div class="lang-switch" role="group" data-i18n-aria-label="lang.switchLabel" aria-label="Seleziona lingua">
+          <button type="button" class="lang-flag" data-lang-choice="it" data-i18n-aria-label="lang.it" aria-label="Italiano" aria-pressed="true">🇮🇹</button>
+          <button type="button" class="lang-flag" data-lang-choice="en" data-i18n-aria-label="lang.en" aria-label="English" aria-pressed="false">🇬🇧</button>
+        </div>
         <span id="sessionRole">Ruolo: ospite</span>
         <span id="sessionUser">Utente: non autenticato</span>
-        <button class="btn btn-ghost" id="btnSettings" type="button" hidden>Impostazioni</button>
-        <button class="btn btn-solid" id="btnLogout" type="button" hidden>Esci</button>
+        <button class="btn btn-ghost" id="btnSettings" type="button" hidden data-i18n="hero.settings">Impostazioni</button>
+        <button class="btn btn-solid" id="btnLogout" type="button" hidden data-i18n="hero.logout">Esci</button>
       </div>
 
       <div class="hidden-tech" aria-hidden="true">
@@ -40,53 +44,53 @@
     <section class="container app-grid">
       <article class="panel" id="auth">
         <div class="panel-head">
-          <h2>Autenticazione</h2>
-          <p>Accedi con email e password.</p>
+          <h2 data-i18n="auth.title">Autenticazione</h2>
+          <p data-i18n="auth.subtitle">Accedi con email e password.</p>
         </div>
         <div class="auth-mobile-switch nav nav-tabs" id="authMobileSwitch" role="tablist" aria-label="Azioni autenticazione">
-          <button type="button" class="tab active" data-auth-view="login">Login</button>
-          <button type="button" class="tab" data-auth-view="register">Crea account</button>
-          <button type="button" class="tab" data-auth-view="recovery">Recupero</button>
+          <button type="button" class="tab active" data-auth-view="login" data-i18n="auth.tab.login">Login</button>
+          <button type="button" class="tab" data-auth-view="register" data-i18n="auth.tab.register">Crea account</button>
+          <button type="button" class="tab" data-auth-view="recovery" data-i18n="auth.tab.recovery">Recupero</button>
         </div>
 
         <form id="formLogin" class="inline-form auth-view" data-auth-view="login">
-          <label>Email<input name="email" type="email" required placeholder="you@example.com"></label>
-          <label>Password<input name="password" type="password" required minlength="8"></label>
-          <button class="btn btn-solid" type="submit">Accedi</button>
+          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required placeholder="you@example.com"></label>
+          <label><span data-i18n="auth.label.password">Password</span><input name="password" type="password" required minlength="8"></label>
+          <button class="btn btn-solid" type="submit" data-i18n="auth.btn.login">Accedi</button>
         </form>
 
         <div class="auth-desktop-actions">
-          <button type="button" class="btn btn-ghost" data-auth-view="register">Crea account</button>
-          <button type="button" class="btn btn-ghost" data-auth-view="recovery">Recupero password</button>
+          <button type="button" class="btn btn-ghost" data-auth-view="register" data-i18n="auth.tab.register">Crea account</button>
+          <button type="button" class="btn btn-ghost" data-auth-view="recovery" data-i18n="auth.btn.forgotPassword">Recupero password</button>
         </div>
 
         <form id="formRegister" class="inline-form auth-view hidden" data-auth-view="register">
-          <label>Nome<input name="nome" type="text" required></label>
-          <label>Cognome<input name="cognome" type="text" required></label>
-          <label>Email<input name="email" type="email" required></label>
-          <label>Password<input id="registerPassword" name="password" type="password" required minlength="10"></label>
+          <label><span data-i18n="auth.label.nome">Nome</span><input name="nome" type="text" required></label>
+          <label><span data-i18n="auth.label.cognome">Cognome</span><input name="cognome" type="text" required></label>
+          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>
+          <label><span data-i18n="auth.label.password">Password</span><input id="registerPassword" name="password" type="password" required minlength="10"></label>
           <div class="password-strength" id="registerPasswordStrength" aria-live="polite">
             <div class="password-strength-bar" id="registerPasswordStrengthBar"></div>
-            <p class="password-strength-label" id="registerPasswordStrengthLabel">Forza password: Scarso</p>
-            <p class="helper-text">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
+            <p class="password-strength-label" id="registerPasswordStrengthLabel" data-i18n="auth.passwordStrength">Forza password: Scarso</p>
+            <p class="helper-text" data-i18n="auth.passwordRules">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
           </div>
-          <label>Conferma password<input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10"></label>
-          <p id="registerPasswordMatchHint" class="helper-text" hidden>Le password non coincidono.</p>
-          <button class="btn btn-solid" type="submit">Conferma creazione account</button>
-          <button class="btn btn-ghost auth-back" type="button" data-auth-view="login">Torna al login</button>
+          <label><span data-i18n="auth.label.passwordConfirm">Conferma password</span><input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10"></label>
+          <p id="registerPasswordMatchHint" class="helper-text" hidden data-i18n="auth.passwordMismatch">Le password non coincidono.</p>
+          <button class="btn btn-solid" type="submit" data-i18n="auth.btn.createAccount">Conferma creazione account</button>
+          <button class="btn btn-ghost auth-back" type="button" data-auth-view="login" data-i18n="auth.btn.backToLogin">Torna al login</button>
         </form>
 
         <section class="auth-view hidden" data-auth-view="recovery">
           <form id="formForgot" class="inline-form">
-            <label>Email<input name="email" type="email" required></label>
-            <button class="btn btn-ghost" type="submit">Invia reset</button>
+            <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>
+            <button class="btn btn-ghost" type="submit" data-i18n="auth.btn.sendReset">Invia reset</button>
           </form>
           <form id="formReset" class="inline-form">
-            <label>Token<input name="token" type="text" required></label>
-            <label>Nuova password<input name="new_password" type="password" required minlength="8"></label>
-            <button class="btn btn-solid" type="submit">Conferma reset password</button>
+            <label><span data-i18n="auth.label.token">Token</span><input name="token" type="text" required></label>
+            <label><span data-i18n="auth.label.newPassword">Nuova password</span><input name="new_password" type="password" required minlength="8"></label>
+            <button class="btn btn-solid" type="submit" data-i18n="auth.btn.confirmReset">Conferma reset password</button>
           </form>
-          <button class="btn btn-ghost auth-back" type="button" data-auth-view="login">Torna al login</button>
+          <button class="btn btn-ghost auth-back" type="button" data-auth-view="login" data-i18n="auth.btn.backToLogin">Torna al login</button>
         </section>
       </article>
 
@@ -543,9 +547,9 @@
     <div class="container footer-inner">
       <p>Visto Easy</p>
       <p class="legal-links">
-        <a href="/privacy-policy">Privacy Policy</a>
+        <a href="/privacy-policy" data-i18n="footer.privacy">Privacy Policy</a>
         <span>•</span>
-        <a href="/cookie-policy">Cookie Policy</a>
+        <a href="/cookie-policy" data-i18n="footer.cookie">Cookie Policy</a>
       </p>
     </div>
   </footer>

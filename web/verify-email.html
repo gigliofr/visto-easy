@@ -23,22 +23,83 @@
 </head>
 <body>
   <main class="auth-landing">
+    <div class="actions" style="justify-content: flex-end; margin-top: 0;">
+      <button class="btn btn-ghost" type="button" data-lang="it" aria-pressed="true">🇮🇹</button>
+      <button class="btn btn-ghost" type="button" data-lang="en" aria-pressed="false">🇬🇧</button>
+    </div>
     <p class="eyebrow">Visto Easy</p>
-    <h1>Verifica il tuo indirizzo email.</h1>
-    <p>Questa pagina completa l'attivazione dell'account richiesto in fase di registrazione.</p>
+    <h1 id="titleText">Verifica il tuo indirizzo email.</h1>
+    <p id="subtitleText">Questa pagina completa l'attivazione dell'account richiesto in fase di registrazione.</p>
     <div id="resultBox" class="result">Verifica in corso...</div>
     <div class="actions">
-      <a class="btn btn-solid" href="/">Torna alla home</a>
-      <a class="btn btn-ghost" href="/#auth">Vai al login</a>
+      <a class="btn btn-solid" id="btnHome" href="/">Torna alla home</a>
+      <a class="btn btn-ghost" id="btnLogin" href="/#auth">Vai al login</a>
     </div>
   </main>
   <script>
     (async () => {
+      const LANG_KEY = 'visto_easy_lang_v1';
+      const STRINGS = {
+        it: {
+          title: 'Verifica il tuo indirizzo email.',
+          subtitle: 'Questa pagina completa l\'attivazione dell\'account richiesto in fase di registrazione.',
+          checking: 'Verifica in corso...',
+          noToken: 'Token mancante. Apri il link ricevuto via email.',
+          failed: 'Verifica non riuscita',
+          success: 'Email verificata con successo. Ora puoi accedere al tuo account.',
+          home: 'Torna alla home',
+          login: 'Vai al login',
+        },
+        en: {
+          title: 'Verify your email address.',
+          subtitle: 'This page completes account activation requested during registration.',
+          checking: 'Verifying...',
+          noToken: 'Missing token. Open the link received by email.',
+          failed: 'Verification failed',
+          success: 'Email successfully verified. You can now sign in to your account.',
+          home: 'Back to home',
+          login: 'Go to login',
+        },
+      };
+      const normalizeLang = (lang) => (String(lang || '').toLowerCase() === 'en' ? 'en' : 'it');
+      const getLang = () => normalizeLang(window.localStorage.getItem(LANG_KEY) || document.documentElement.lang || navigator.language?.slice(0, 2));
+      let lang = getLang();
+
+      const titleText = document.getElementById('titleText');
+      const subtitleText = document.getElementById('subtitleText');
+      const btnHome = document.getElementById('btnHome');
+      const btnLogin = document.getElementById('btnLogin');
       const box = document.getElementById('resultBox');
+      const applyLang = () => {
+        const s = STRINGS[lang];
+        document.documentElement.lang = lang;
+        titleText.textContent = s.title;
+        subtitleText.textContent = s.subtitle;
+        btnHome.textContent = s.home;
+        btnLogin.textContent = s.login;
+        if (!box.dataset.state || box.dataset.state === 'checking') {
+          box.textContent = s.checking;
+        }
+        document.querySelectorAll('[data-lang]').forEach((btn) => {
+          const active = btn.getAttribute('data-lang') === lang;
+          btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+      };
+
+      document.querySelectorAll('[data-lang]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          lang = normalizeLang(btn.getAttribute('data-lang'));
+          window.localStorage.setItem(LANG_KEY, lang);
+          applyLang();
+        });
+      });
+      applyLang();
+
       const token = new URLSearchParams(window.location.search).get('token') || '';
       if (!token) {
         box.className = 'result err';
-        box.textContent = 'Token mancante. Apri il link ricevuto via email.';
+        box.dataset.state = 'error';
+        box.textContent = STRINGS[lang].noToken;
         return;
       }
       try {
@@ -48,12 +109,14 @@
           body: JSON.stringify({ token }),
         });
         const data = await response.json().catch(() => null);
-        if (!response.ok) throw new Error((data && (data.error || data.message)) || 'Verifica non riuscita');
+        if (!response.ok) throw new Error((data && (data.error || data.message)) || STRINGS[lang].failed);
         box.className = 'result ok';
-        box.innerHTML = 'Email verificata con successo. Ora puoi accedere al tuo account.';
+        box.dataset.state = 'success';
+        box.innerHTML = STRINGS[lang].success;
       } catch (err) {
         box.className = 'result err';
-        box.textContent = err.message || 'Verifica non riuscita';
+        box.dataset.state = 'error';
+        box.textContent = err.message || STRINGS[lang].failed;
       }
     })();
   </script>

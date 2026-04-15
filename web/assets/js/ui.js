@@ -1,4 +1,5 @@
 import { hasActiveSession, hasBackofficeRole, hasRichiedenteRole, role, state } from './session.js';
+import { t } from './i18n.js';
 
 export const els = {
   appOutput: document.getElementById('appOutput'),
@@ -29,12 +30,12 @@ export const els = {
 };
 
 export function renderSessionInfo() {
-  const currentRole = role() || 'ospite';
-  const email = state.user?.email || 'non autenticato';
-  els.sessionRole.textContent = `Ruolo: ${currentRole}`;
-  els.sessionUser.textContent = `Utente: ${email}`;
-  if (els.boSessionRole) els.boSessionRole.textContent = `Ruolo: ${currentRole}`;
-  if (els.boSessionUser) els.boSessionUser.textContent = `Utente: ${email}`;
+  const currentRole = role() || t('session.guest');
+  const email = state.user?.email || t('session.notAuth');
+  els.sessionRole.textContent = t('session.role', { role: currentRole });
+  els.sessionUser.textContent = t('session.user', { email });
+  if (els.boSessionRole) els.boSessionRole.textContent = t('session.role', { role: currentRole });
+  if (els.boSessionUser) els.boSessionUser.textContent = t('session.user', { email });
   els.apiBaseInput.value = state.apiBase;
   const loggedIn = Boolean(hasActiveSession() && state.user?.id && state.user?.email);
   document.body.dataset.auth = loggedIn ? '1' : '0';
@@ -70,11 +71,11 @@ export function out(title, payload) {
 }
 
 export function extractErrMessage(err) {
-  if (!err) return 'errore sconosciuto';
+  if (!err) return t('generic.unknownError');
   const data = err.data;
   if (typeof data === 'string' && data.trim()) return data;
   if (data && typeof data.error === 'string') return data.error;
-  return `errore ${err.status || ''}`.trim();
+  return t('generic.errorPrefix', { status: err.status || '' }).trim();
 }
 
 export function setBusy(el, busy) {
@@ -82,7 +83,7 @@ export function setBusy(el, busy) {
   if (busy) {
     el.dataset.prevText = el.textContent;
     el.disabled = true;
-    el.textContent = 'Attendere...';
+    el.textContent = t('generic.loading');
     return;
   }
   el.disabled = false;
@@ -103,7 +104,7 @@ export async function withBusy(buttonEl, op) {
 
 export function renderList(container, items, mapper) {
   if (!items || items.length === 0) {
-    container.innerHTML = '<div class="list-item"><p>Nessun elemento</p></div>';
+    container.innerHTML = `<div class="list-item"><p>${t('generic.emptyList')}</p></div>`;
     return;
   }
   container.innerHTML = items.map(mapper).join('');
