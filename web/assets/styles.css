@@ -964,6 +964,32 @@ body[data-auth="1"] #btnLogout {
   font-size: 0.86rem;
 }
 
+.password-strength {
+  margin-top: -2px;
+  margin-bottom: 6px;
+}
+
+.password-strength-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #c62a26 0%, #c62a26 20%, #ecf0f6 20%, #ecf0f6 100%);
+  border: 1px solid #e2e8f2;
+}
+
+.password-strength-label {
+  margin: 8px 0 4px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #4b5563;
+}
+
+#registerPasswordMatchHint {
+  margin-top: -2px;
+  margin-bottom: 6px;
+  color: #b42318;
+  font-weight: 700;
+}
+
 .section-title {
   margin: 14px 0 6px;
   font-size: 1rem;

@@ -12,10 +12,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/mail"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -42,6 +44,13 @@ type Server struct {
 	authRL  *simpleRateLimiter
 	loginLT *loginLockTracker
 }
+
+var (
+	passwordHasLower   = regexp.MustCompile(`[a-z]`)
+	passwordHasUpper   = regexp.MustCompile(`[A-Z]`)
+	passwordHasNumber  = regexp.MustCompile(`\d`)
+	passwordHasSpecial = regexp.MustCompile(`[^A-Za-z0-9]`)
+)
 
 func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.PresignService) *Server {
 	limitPerMinute := envInt("AUTH_RATE_LIMIT_RPM", 30)
@@ -482,38 +491,72 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	if req.Email == "" || len(req.Password) < 8 {
-		writeErr(w, http.StatusBadRequest, "email/password non validi")
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		writeErr(w, http.StatusBadRequest, "email non valida")
+		return
+	}
+	parsedEmail, err := mail.ParseAddress(email)
+	if err != nil || strings.TrimSpace(parsedEmail.Address) == "" {
+		writeErr(w, http.StatusBadRequest, "email non valida")
+		return
+	}
+	if ok, msg := validateStrongPassword(req.Password); !ok {
+		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
 	pwd, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
-	u, err := s.store.CreateUser(model.Utente{Email: req.Email, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente, Attivo: false, EmailVerificata: false})
+	u, err := s.store.CreateUser(model.Utente{Email: parsedEmail.Address, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente, Attivo: false, EmailVerificata: false})
 	if err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
 			writeErr(w, http.StatusConflict, "utente già esistente")
 			return
 		}
-			verificationTokenRaw := make([]byte, 24)
-			if _, err := rand.Read(verificationTokenRaw); err != nil {
-				writeErr(w, http.StatusInternalServerError, "errore interno")
-				return
-			}
-			verificationToken := hex.EncodeToString(verificationTokenRaw)
-			expiresAt := time.Now().UTC().Add(24 * time.Hour)
-			if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{Token: verificationToken, Purpose: "email_verification", UserID: u.ID, Email: u.Email, ExpiresAt: expiresAt}); err != nil {
-				writeErr(w, http.StatusInternalServerError, "errore interno")
-				return
-			}
-			verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
-			textBody := "Benvenuto su Visto Easy.\nConferma il tuo account cliccando il link: " + verifyURL + "\nScade: " + expiresAt.Format(time.RFC3339)
-			htmlBody := "<p>Benvenuto su Visto Easy.</p><p>Conferma il tuo account cliccando il link: <a href=\"" + verifyURL + "\">attiva account</a></p><p>Scade: " + expiresAt.Format(time.RFC3339) + "</p>"
-			if err := s.sendEmail(u.Email, "Verifica email Visto Easy", textBody, htmlBody); err != nil {
-				s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "registration_verification", Email: u.Email, UserID: u.ID, IP: clientIP(r)})
-			}
-			writeJSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_link": verifyURL, "verification_expires": expiresAt.Format(time.RFC3339)})
+		writeErr(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
-	writeJSON(w, http.StatusCreated, u)
+
+	verificationTokenRaw := make([]byte, 24)
+	if _, err := rand.Read(verificationTokenRaw); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	verificationToken := hex.EncodeToString(verificationTokenRaw)
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{Token: verificationToken, Purpose: "email_verification", UserID: u.ID, Email: u.Email, ExpiresAt: expiresAt}); err != nil {
+		writeErr(w, http.StatusInternalServerError, "errore interno")
+		return
+	}
+	verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
+	textBody := "Benvenuto su Visto Easy.\nConferma il tuo account cliccando il link: " + verifyURL + "\nScade: " + expiresAt.Format(time.RFC3339)
+	htmlBody := "<p>Benvenuto su Visto Easy.</p><p>Conferma il tuo account cliccando il link: <a href=\"" + verifyURL + "\">attiva account</a></p><p>Scade: " + expiresAt.Format(time.RFC3339) + "</p>"
+	if err := s.sendEmail(u.Email, "Verifica email Visto Easy", textBody, htmlBody); err != nil {
+		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "registration_verification", Email: u.Email, UserID: u.ID, IP: clientIP(r)})
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_expires": expiresAt.Format(time.RFC3339)})
+}
+
+func validateStrongPassword(password string) (bool, string) {
+	value := password
+	if len(value) < 10 {
+		return false, "password troppo corta: minimo 10 caratteri"
+	}
+	if len(value) > 128 {
+		return false, "password troppo lunga: massimo 128 caratteri"
+	}
+	if !passwordHasLower.MatchString(value) {
+		return false, "password non valida: aggiungi almeno una lettera minuscola"
+	}
+	if !passwordHasUpper.MatchString(value) {
+		return false, "password non valida: aggiungi almeno una lettera maiuscola"
+	}
+	if !passwordHasNumber.MatchString(value) {
+		return false, "password non valida: aggiungi almeno un numero"
+	}
+	if !passwordHasSpecial.MatchString(value) {
+		return false, "password non valida: aggiungi almeno un simbolo"
+	}
+	return true, ""
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {

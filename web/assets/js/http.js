@@ -30,8 +30,10 @@ export async function api(path, options = {}) {
 export function formJson(form) {
   const fd = new FormData(form);
   const obj = {};
+  const sensitiveFields = new Set(['password', 'password_confirm', 'new_password', 'otp', 'code']);
   for (const [k, v] of fd.entries()) {
-    obj[k] = String(v).trim();
+    const raw = String(v);
+    obj[k] = sensitiveFields.has(k) ? raw : raw.trim();
   }
   return obj;
 }

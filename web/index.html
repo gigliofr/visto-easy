@@ -64,7 +64,14 @@
           <label>Nome<input name="nome" type="text" required></label>
           <label>Cognome<input name="cognome" type="text" required></label>
           <label>Email<input name="email" type="email" required></label>
-          <label>Password<input name="password" type="password" required minlength="8"></label>
+          <label>Password<input id="registerPassword" name="password" type="password" required minlength="10"></label>
+          <div class="password-strength" id="registerPasswordStrength" aria-live="polite">
+            <div class="password-strength-bar" id="registerPasswordStrengthBar"></div>
+            <p class="password-strength-label" id="registerPasswordStrengthLabel">Forza password: Scarso</p>
+            <p class="helper-text">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
+          </div>
+          <label>Conferma password<input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10"></label>
+          <p id="registerPasswordMatchHint" class="helper-text" hidden>Le password non coincidono.</p>
           <button class="btn btn-solid" type="submit">Conferma creazione account</button>
           <button class="btn btn-ghost auth-back" type="button" data-auth-view="login">Torna al login</button>
         </form>

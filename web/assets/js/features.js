@@ -71,6 +71,50 @@ const richState = {
   activeTab: 'create',
 };
 
+function evaluatePasswordStrength(password) {
+  const value = String(password || '');
+  let score = 0;
+  if (value.length >= 10) score += 1;
+  if (/[a-z]/.test(value)) score += 1;
+  if (/[A-Z]/.test(value)) score += 1;
+  if (/\d/.test(value)) score += 1;
+  if (/[^A-Za-z0-9]/.test(value)) score += 1;
+  if (value.length >= 14) score += 1;
+
+  let label = 'Scarso';
+  if (score >= 4) label = 'Medio';
+  if (score >= 6) label = 'Eccellente';
+
+  return { score: Math.min(score, 6), label };
+}
+
+function isRegistrationPasswordStrong(password) {
+  const value = String(password || '');
+  return value.length >= 10
+    && /[a-z]/.test(value)
+    && /[A-Z]/.test(value)
+    && /\d/.test(value)
+    && /[^A-Za-z0-9]/.test(value);
+}
+
+function updateRegisterPasswordUI() {
+  const passwordEl = document.getElementById('registerPassword');
+  const confirmEl = document.getElementById('registerPasswordConfirm');
+  const barEl = document.getElementById('registerPasswordStrengthBar');
+  const labelEl = document.getElementById('registerPasswordStrengthLabel');
+  const hintEl = document.getElementById('registerPasswordMatchHint');
+  if (!passwordEl || !confirmEl || !barEl || !labelEl || !hintEl) return;
+
+  const { score, label } = evaluatePasswordStrength(passwordEl.value);
+  const pct = Math.max(12, Math.round((score / 6) * 100));
+  const color = score <= 2 ? '#c62a26' : (score <= 4 ? '#b7791f' : '#1f7a4d');
+  barEl.style.background = `linear-gradient(90deg, ${color} 0%, ${color} ${pct}%, #ecf0f6 ${pct}%, #ecf0f6 100%)`;
+  labelEl.textContent = `Forza password: ${label}`;
+
+  const mismatch = confirmEl.value.length > 0 && passwordEl.value !== confirmEl.value;
+  hintEl.hidden = !mismatch;
+}
+
 function parseTs(value) {
   const ts = Date.parse(value || '');
   return Number.isFinite(ts) ? ts : 0;
@@ -1306,6 +1350,14 @@ async function loadBODashboard() {
 }
 
 function wireForms() {
+  const registerPassword = document.getElementById('registerPassword');
+  const registerPasswordConfirm = document.getElementById('registerPasswordConfirm');
+  if (registerPassword && registerPasswordConfirm) {
+    registerPassword.addEventListener('input', updateRegisterPasswordUI);
+    registerPasswordConfirm.addEventListener('input', updateRegisterPasswordUI);
+    updateRegisterPasswordUI();
+  }
+
   document.getElementById('formLogin').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const submit = ev.currentTarget.querySelector('button[type="submit"]');
@@ -1332,7 +1384,23 @@ function wireForms() {
     try {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
-        const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+        const password = String(payload.password || '');
+        const passwordConfirm = String(payload.password_confirm || '');
+        if (password !== passwordConfirm) {
+          notify('err', 'Le password non coincidono');
+          return;
+        }
+        if (!isRegistrationPasswordStrong(password)) {
+          notify('err', 'Password troppo debole: usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli');
+          return;
+        }
+        const registerPayload = {
+          nome: payload.nome,
+          cognome: payload.cognome,
+          email: payload.email,
+          password,
+        };
+        const data = await api('/api/auth/register', { method: 'POST', body: JSON.stringify(registerPayload) });
         out('Registrazione completata', data);
         if (data?.status === 'pending_verification') {
           notify('ok', "Registrazione completata. Controlla la tua email per attivare l'account.");
