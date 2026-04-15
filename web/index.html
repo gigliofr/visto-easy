@@ -47,18 +47,18 @@
           <h2 data-i18n="auth.title">Autenticazione</h2>
           <p data-i18n="auth.subtitle">Accedi con email e password.</p>
         </div>
-        <div class="auth-mobile-switch nav nav-tabs" id="authMobileSwitch" role="tablist" aria-label="Azioni autenticazione">
+        <div class="auth-mobile-switch nav nav-tabs" id="authMobileSwitch" role="tablist" data-i18n-aria-label="auth.switchLabel" aria-label="Azioni autenticazione">
           <button type="button" class="tab active" data-auth-view="login" data-i18n="auth.tab.login">Login</button>
           <button type="button" class="tab" data-auth-view="register" data-i18n="auth.tab.register">Crea account</button>
           <button type="button" class="tab" data-auth-view="recovery" data-i18n="auth.tab.recovery">Recupero</button>
         </div>
 
         <form id="formLogin" class="inline-form auth-view" data-auth-view="login">
-          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required placeholder="you@example.com"></label>
+          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required placeholder="you@example.com" data-i18n-placeholder="auth.placeholder.email"></label>
           <label>
             <span data-i18n="auth.label.password">Password</span>
             <div class="password-field">
-              <input id="loginPassword" name="password" type="password" required minlength="8">
+              <input id="loginPassword" name="password" type="password" required minlength="8" data-i18n-placeholder="auth.placeholder.password">
               <button id="loginPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
             </div>
           </label>
@@ -71,13 +71,13 @@
         </div>
 
         <form id="formRegister" class="inline-form auth-view hidden" data-auth-view="register">
-          <label><span data-i18n="auth.label.nome">Nome</span><input name="nome" type="text" required></label>
-          <label><span data-i18n="auth.label.cognome">Cognome</span><input name="cognome" type="text" required></label>
-          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>
+          <label><span data-i18n="auth.label.nome">Nome</span><input name="nome" type="text" required data-i18n-placeholder="auth.placeholder.nome"></label>
+          <label><span data-i18n="auth.label.cognome">Cognome</span><input name="cognome" type="text" required data-i18n-placeholder="auth.placeholder.cognome"></label>
+          <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required data-i18n-placeholder="auth.placeholder.email"></label>
           <label>
             <span data-i18n="auth.label.password">Password</span>
             <div class="password-field">
-              <input id="registerPassword" name="password" type="password" required minlength="10" aria-describedby="registerPasswordHelp registerPasswordStrengthLabel registerPasswordSuggestions">
+              <input id="registerPassword" name="password" type="password" required minlength="10" aria-describedby="registerPasswordHelp registerPasswordStrengthLabel registerPasswordSuggestions" data-i18n-placeholder="auth.placeholder.passwordStrong">
               <button id="registerPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
             </div>
           </label>
@@ -85,7 +85,7 @@
             <div class="password-strength-bar" id="registerPasswordStrengthBar"></div>
             <p class="password-strength-label" id="registerPasswordStrengthLabel" aria-live="polite" data-i18n="auth.passwordStrength">Forza password: Scarso</p>
             <p class="helper-text" id="registerPasswordHelp" data-i18n="auth.passwordRules">Usa almeno 10 caratteri con maiuscole, minuscole, numeri e simboli.</p>
-            <ul class="password-suggestions" id="registerPasswordSuggestions" aria-label="Suggerimenti password">
+            <ul class="password-suggestions" id="registerPasswordSuggestions" data-i18n-aria-label="auth.passwordSuggestionsLabel" aria-label="Suggerimenti password">
               <li id="registerPasswordSuggestionLength" data-i18n="auth.passwordSuggestion.length">Almeno 10 caratteri.</li>
               <li id="registerPasswordSuggestionUpper" data-i18n="auth.passwordSuggestion.upper">Una o piu maiuscole.</li>
               <li id="registerPasswordSuggestionLower" data-i18n="auth.passwordSuggestion.lower">Una o piu minuscole.</li>
@@ -96,7 +96,7 @@
           <label>
             <span data-i18n="auth.label.passwordConfirm">Conferma password</span>
             <div class="password-field">
-              <input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10" aria-describedby="registerPasswordMatchHint">
+              <input id="registerPasswordConfirm" name="password_confirm" type="password" required minlength="10" aria-describedby="registerPasswordMatchHint" data-i18n-placeholder="auth.placeholder.passwordConfirm">
               <button id="registerPasswordConfirmToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
             </div>
           </label>
@@ -107,7 +107,7 @@
 
         <section class="auth-view hidden auth-pending" data-auth-view="register-pending">
           <h3 data-i18n="auth.pending.title">Controlla la tua casella email</h3>
-          <p id="registerPendingSubtitle">Abbiamo inviato un link di attivazione alla tua email.</p>
+          <p id="registerPendingSubtitle" data-i18n="auth.pending.subtitleGeneric">Abbiamo inviato un link di attivazione alla tua email.</p>
           <ol class="pending-steps">
             <li data-i18n="auth.pending.step1">Apri la tua casella di posta (controlla anche spam/promozioni).</li>
             <li data-i18n="auth.pending.step2">Clicca il pulsante di verifica presente nella mail.</li>
@@ -125,15 +125,15 @@
 
         <section class="auth-view hidden" data-auth-view="recovery">
           <form id="formForgot" class="inline-form">
-            <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required></label>
+            <label><span data-i18n="auth.label.email">Email</span><input name="email" type="email" required data-i18n-placeholder="auth.placeholder.email"></label>
             <button class="btn btn-ghost" type="submit" data-i18n="auth.btn.sendReset">Invia reset</button>
           </form>
           <form id="formReset" class="inline-form">
-            <label><span data-i18n="auth.label.token">Token</span><input name="token" type="text" required></label>
+            <label><span data-i18n="auth.label.token">Token</span><input name="token" type="text" required data-i18n-placeholder="auth.placeholder.token"></label>
             <label>
               <span data-i18n="auth.label.newPassword">Nuova password</span>
               <div class="password-field">
-                <input id="resetNewPassword" name="new_password" type="password" required minlength="8">
+                <input id="resetNewPassword" name="new_password" type="password" required minlength="8" data-i18n-placeholder="auth.placeholder.newPassword">
                 <button id="resetNewPasswordToggle" class="password-toggle" type="button" data-i18n="auth.passwordToggleShow" data-i18n-aria-label="auth.passwordToggleShow">Mostra</button>
               </div>
             </label>

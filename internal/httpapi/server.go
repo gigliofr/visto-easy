@@ -532,6 +532,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
+	log.Printf("[auth] verify-email link generated user=%s url=%s", u.Email, redactActionURLForLog(verifyURL))
 	textBody := "Benvenuto su Visto Easy.\nConferma il tuo account cliccando il link: " + verifyURL + "\nScade: " + expiresAt.Format(time.RFC3339)
 	htmlBody := "<p>Benvenuto su Visto Easy.</p><p>Conferma il tuo account cliccando il link: <a href=\"" + verifyURL + "\">attiva account</a></p><p>Scade: " + expiresAt.Format(time.RFC3339) + "</p>"
 	if err := s.sendEmail(u.Email, "Verifica email Visto Easy", textBody, htmlBody); err != nil {
@@ -779,6 +780,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 					ExpiresAt: expiresAt,
 				})
 				resetURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL")), "/reset-password", token)
+				log.Printf("[auth] reset-password link generated user=%s url=%s", email, redactActionURLForLog(resetURL))
 				textBody := "Abbiamo ricevuto una richiesta di reset password."
 				htmlBody := "<p>Abbiamo ricevuto una richiesta di reset password.</p>"
 				textBody += "\nUsa questo link: " + resetURL
@@ -1703,6 +1705,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 	}
 
 	inviteURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_OPERATOR_INVITE_URL")), "/reset-password", inviteToken)
+	log.Printf("[auth] operator-invite link generated email=%s url=%s", email, redactActionURLForLog(inviteURL))
 
 	textBody := "Sei stato invitato come operatore su Visto Easy."
 	htmlBody := "<p>Sei stato invitato come operatore su Visto Easy.</p>"
@@ -1778,6 +1781,65 @@ func buildActionURL(baseURL, fallbackPath, token string) string {
 		sep = ""
 	}
 	return baseURL + sep + "token=" + token
+}
+
+func redactTokenForLog(token string) string {
+	clean := strings.TrimSpace(token)
+	if clean == "" {
+		return ""
+	}
+	if len(clean) <= 8 {
+		return "***"
+	}
+	return clean[:4] + "..." + clean[len(clean)-4:]
+}
+
+func redactActionURLForLog(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+
+	q := u.Query()
+	for key := range q {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(key)), "token") {
+			vals := q[key]
+			for i := range vals {
+				vals[i] = redactTokenForLog(vals[i])
+			}
+			q[key] = vals
+		}
+	}
+	u.RawQuery = q.Encode()
+
+	for _, prefix := range []string{"/verify-email/", "/reset-password/"} {
+		pathLower := strings.ToLower(u.Path)
+		idx := strings.Index(pathLower, prefix)
+		if idx < 0 {
+			continue
+		}
+		start := idx + len(prefix)
+		if start >= len(u.Path) {
+			continue
+		}
+		tail := u.Path[start:]
+		sepIdx := strings.IndexByte(tail, '/')
+		tokenPart := tail
+		rest := ""
+		if sepIdx >= 0 {
+			tokenPart = tail[:sepIdx]
+			rest = tail[sepIdx:]
+		}
+		u.Path = u.Path[:start] + redactTokenForLog(tokenPart) + rest
+		break
+	}
+
+	return u.String()
 }
 
 func purposeMatches(actual string, expected ...string) bool {
