@@ -1735,9 +1735,7 @@ func buildActionURL(baseURL, fallbackPath, token string) string {
 	if baseURL == "" {
 		baseURL = fallbackPath
 	}
-	if strings.Contains(baseURL, "{token}") {
-		return strings.ReplaceAll(baseURL, "{token}", token)
-	}
+	baseURL = strings.ReplaceAll(baseURL, "{token}", token)
 	if u, err := url.Parse(baseURL); err == nil {
 		q := u.Query()
 		q.Set("token", token)

@@ -46,7 +46,7 @@
     if (!raw) return '';
     const cleaned = raw.replace(/^token/i, '').replace(/^[:=\s]+/, '').trim();
     if (!cleaned) return '';
-    const m = cleaned.match(/^([A-Za-z0-9._~\-]{12,})/);
+    const m = cleaned.match(/([A-Za-z0-9._~\-]{12,})/);
     if (m && m[1]) return m[1];
     return '';
   };
