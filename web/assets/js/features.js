@@ -581,7 +581,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
       try {
         await withBusy(ev.currentTarget, async () => {
           const res = await api(`/api/pratiche/${praticaID}/submit`, { method: 'POST' });
-          out('Pratica submit', res);
+          out(t('ops.log.practiceSubmitted'), res);
           notify('ok', t('ops.ok.practiceSubmitted'));
           await loadMiePratiche();
         });
@@ -596,7 +596,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
         await withBusy(ev.currentTarget, async () => {
           await api(`/api/pratiche/${praticaID}`, { method: 'DELETE' });
           removePracticeFromHistory(praticaID);
-          out('Pratica eliminata', { id: praticaID });
+          out(t('ops.log.practiceDeleted'), { id: praticaID });
           notify('ok', t('ops.ok.practiceDeleted'));
           await loadMiePratiche();
         });
@@ -611,7 +611,7 @@ async function loadMiePratiche(preferredPraticaID = '') {
           const docs = await api(`/api/pratiche/${praticaID}/documenti`);
           const select = document.getElementById('docPraticaSelect');
           if (select) select.value = praticaID;
-          out(`Documenti pratica ${praticaID}`, docs);
+          out(t('ops.log.practiceDocuments', { id: praticaID }), docs);
           notify('ok', t('ops.ok.practiceDocTarget', { id: praticaID }));
         });
       } catch (err) {
@@ -957,7 +957,7 @@ function renderBackofficeDetail(pratica) {
           method: 'POST',
           body: JSON.stringify({ messaggio, interna: true }),
         });
-        out('BO aggiungi nota interna dettaglio', data);
+        out(t('ops.log.boAddNoteDetail'), data);
         notify('ok', t('ops.ok.internalNoteAdded'));
         await loadBOPratiche();
       });
@@ -1529,7 +1529,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const data = await api('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(payload) });
-        out('Reset password', data);
+        out(t('ops.log.passwordReset'), data);
         notify('ok', t('auth.ok.passwordUpdated'));
       });
     } catch (err) {
@@ -1616,7 +1616,7 @@ function wireForms() {
             dati_passaporto: richAttrs.passaporto,
           }),
         });
-        out('Pratica creata', data);
+        out(t('ops.log.practiceCreated'), data);
         notify('ok', t('ops.ok.practiceCreated'));
         const createdID = data.id || data.pratica?.id || '';
         if (feedback) {
@@ -1714,10 +1714,10 @@ function wireForms() {
           });
           if (output) {
             output.textContent = data.invite_url
-              ? `Invito creato: ${data.invite_url}`
-              : `Invito creato. Token: ${data.invite_token || '-'}`;
+              ? t('bo.invite.createdWithUrl', { url: data.invite_url })
+              : t('bo.invite.createdWithToken', { token: data.invite_token || '-' });
           }
-          out('BO invito operatore', data);
+          out(t('ops.log.boOperatorInvite'), data);
           notify('ok', t('ops.ok.operatorInviteSent'));
           ev.currentTarget.reset();
           setBOInviteOperatorBox(false);
@@ -1752,7 +1752,7 @@ function wireForms() {
           method: 'PATCH',
           body: JSON.stringify({ stato: payload.stato, nota: payload.nota }),
         });
-        out('BO cambio stato', data);
+        out(t('ops.log.boChangeState'), data);
         notify('ok', t('ops.ok.practiceStateUpdated'));
         await loadBOPratiche();
       });
@@ -1776,7 +1776,7 @@ function wireForms() {
             interna: payload.interna === 'true',
           }),
         });
-        out('BO aggiungi nota', data);
+        out(t('ops.log.boAddNote'), data);
         notify('ok', t('ops.ok.noteAdded'));
       });
     } catch (err) {
@@ -1796,7 +1796,7 @@ function wireForms() {
           method: 'POST',
           body: JSON.stringify({ operatore_id: payload.operatore_id }),
         });
-        out('BO assegna operatore', data);
+        out(t('ops.log.boAssignOperator'), data);
         notify('ok', t('ops.ok.operatorAssigned'));
       });
     } catch (err) {

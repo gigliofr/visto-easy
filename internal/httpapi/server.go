@@ -533,9 +533,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
 	log.Printf("[auth] verify-email link generated user=%s url=%s", u.Email, redactActionURLForLog(verifyURL))
-	textBody := "Benvenuto su Visto Easy.\nConferma il tuo account cliccando il link: " + verifyURL + "\nScade: " + expiresAt.Format(time.RFC3339)
-	htmlBody := "<p>Benvenuto su Visto Easy.</p><p>Conferma il tuo account cliccando il link: <a href=\"" + verifyURL + "\">attiva account</a></p><p>Scade: " + expiresAt.Format(time.RFC3339) + "</p>"
-	if err := s.sendEmail(u.Email, "Verifica email Visto Easy", textBody, htmlBody); err != nil {
+	subject, textBody, htmlBody := buildAuthVerificationEmail(preferredEmailLang(r), verifyURL, expiresAt)
+	if err := s.sendEmail(u.Email, subject, textBody, htmlBody); err != nil {
 		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "registration_verification", Email: u.Email, UserID: u.ID, IP: clientIP(r)})
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_expires": expiresAt.Format(time.RFC3339)})
@@ -781,13 +780,8 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 				})
 				resetURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_RESET_PASSWORD_URL")), "/reset-password", token)
 				log.Printf("[auth] reset-password link generated user=%s url=%s", email, redactActionURLForLog(resetURL))
-				textBody := "Abbiamo ricevuto una richiesta di reset password."
-				htmlBody := "<p>Abbiamo ricevuto una richiesta di reset password.</p>"
-				textBody += "\nUsa questo link: " + resetURL
-				htmlBody += "<p>Usa questo link: <a href=\"" + resetURL + "\">reset password</a></p>"
-				textBody += "\nScade: " + expiresAt.Format(time.RFC3339)
-				htmlBody += "<p>Scadenza: " + expiresAt.Format(time.RFC3339) + "</p>"
-				if err := s.sendEmail(email, "Reset password Visto Easy", textBody, htmlBody); err != nil {
+				subject, textBody, htmlBody := buildAuthPasswordResetEmail(preferredEmailLang(r), resetURL, expiresAt)
+				if err := s.sendEmail(email, subject, textBody, htmlBody); err != nil {
 					s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "password_reset", Email: email, UserID: u.ID, IP: clientIP(r)})
 				}
 				s.recordSecurityEvent(model.SecurityEvent{
@@ -1706,20 +1700,8 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 
 	inviteURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_OPERATOR_INVITE_URL")), "/reset-password", inviteToken)
 	log.Printf("[auth] operator-invite link generated email=%s url=%s", email, redactActionURLForLog(inviteURL))
-
-	textBody := "Sei stato invitato come operatore su Visto Easy."
-	htmlBody := "<p>Sei stato invitato come operatore su Visto Easy.</p>"
-	if inviteURL != "" {
-		textBody += "\nCompleta l'attivazione qui: " + inviteURL
-		htmlBody += "<p>Completa l'attivazione qui: <a href=\"" + inviteURL + "\">attiva account</a></p>"
-	} else {
-		textBody += "\nToken invito: " + inviteToken
-		htmlBody += "<p>Token invito: <strong>" + inviteToken + "</strong></p>"
-	}
-	textBody += "\nScadenza: " + expiresAt.Format(time.RFC3339)
-	htmlBody += "<p>Scadenza: " + expiresAt.Format(time.RFC3339) + "</p>"
-
-	if err := s.sendEmail(email, "Invito operatore Visto Easy", textBody, htmlBody); err != nil {
+	subject, textBody, htmlBody := buildAuthOperatorInviteEmail(preferredEmailLang(r), inviteURL, inviteToken, expiresAt)
+	if err := s.sendEmail(email, subject, textBody, htmlBody); err != nil {
 		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "operator_invite", Email: email, UserID: u.ID, IP: clientIP(r)})
 	}
 
