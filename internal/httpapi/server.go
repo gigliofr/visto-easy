@@ -1737,7 +1737,25 @@ func buildActionURL(baseURL, fallbackPath, token string) string {
 	}
 	baseURL = strings.ReplaceAll(baseURL, "{token}", token)
 	if u, err := url.Parse(baseURL); err == nil {
+		path := strings.ToLower(strings.TrimSpace(u.Path))
+		isTokenAction := strings.Contains(path, "/verify-email") || strings.Contains(path, "/reset-password")
+
+		if isTokenAction {
+			// For token actions we always emit a canonical query string to avoid legacy malformed params.
+			u.RawQuery = ""
+			q := url.Values{}
+			q.Set("token", token)
+			u.RawQuery = q.Encode()
+			return u.String()
+		}
+
 		q := u.Query()
+		for key := range q {
+			cleanKey := strings.ToLower(strings.TrimSpace(key))
+			if strings.Contains(cleanKey, "token") {
+				q.Del(key)
+			}
+		}
 		q.Set("token", token)
 		u.RawQuery = q.Encode()
 		return u.String()
