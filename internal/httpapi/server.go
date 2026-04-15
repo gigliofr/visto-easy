@@ -1734,9 +1734,19 @@ func buildActionURL(baseURL, fallbackPath, token string) string {
 	if strings.Contains(baseURL, "{token}") {
 		return strings.ReplaceAll(baseURL, "{token}", token)
 	}
+	if u, err := url.Parse(baseURL); err == nil {
+		q := u.Query()
+		q.Set("token", token)
+		u.RawQuery = q.Encode()
+		return u.String()
+	}
+
 	sep := "?"
 	if strings.Contains(baseURL, "?") {
 		sep = "&"
+	}
+	if strings.HasSuffix(baseURL, "?") || strings.HasSuffix(baseURL, "&") {
+		sep = ""
 	}
 	return baseURL + sep + "token=" + token
 }

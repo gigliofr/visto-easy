@@ -36,6 +36,31 @@
 
   const t = (key) => STRINGS[lang][key] || STRINGS.it[key] || key;
 
+  const extractTokenFromURL = () => {
+    const params = new URLSearchParams(window.location.search);
+    const direct = String(params.get('token') || '').trim();
+    if (direct) return direct;
+
+    for (const [key, value] of params.entries()) {
+      const v = String(value || '').trim();
+      if (key === 'token' && v) return v;
+
+      const keyToken = String(key || '').trim();
+      const m = keyToken.match(/^token=?([A-Fa-f0-9]{24,})$/i);
+      if (m && m[1]) return m[1];
+    }
+
+    const rawQuery = String(window.location.search || '').replace(/^\?/, '').trim();
+    const queryMatch = rawQuery.match(/(?:^|[?&])token=?([A-Fa-f0-9]{24,})(?:&|$)/i);
+    if (queryMatch && queryMatch[1]) return queryMatch[1];
+
+    const rawHash = String(window.location.hash || '').replace(/^#/, '').trim();
+    const hashMatch = rawHash.match(/(?:^|[?&])token=?([A-Fa-f0-9]{24,})(?:&|$)/i);
+    if (hashMatch && hashMatch[1]) return hashMatch[1];
+
+    return '';
+  };
+
   const applyLang = () => {
     document.documentElement.lang = lang;
     titleText.textContent = t('title');
@@ -63,7 +88,7 @@
 
   applyLang();
 
-  const token = new URLSearchParams(window.location.search).get('token') || '';
+  const token = extractTokenFromURL();
   if (!token) {
     resultBox.className = 'status err';
     resultBox.dataset.state = 'error';
