@@ -1735,20 +1735,29 @@ func buildActionURL(baseURL, fallbackPath, token string) string {
 	if baseURL == "" {
 		baseURL = fallbackPath
 	}
+	baseURL = strings.ReplaceAll(baseURL, "\uFFFD", "")
 	baseURL = strings.ReplaceAll(baseURL, "{token}", token)
-	if u, err := url.Parse(baseURL); err == nil {
-		path := strings.ToLower(strings.TrimSpace(u.Path))
-		isTokenAction := strings.Contains(path, "/verify-email") || strings.Contains(path, "/reset-password")
 
-		if isTokenAction {
-			// For token actions we always emit a canonical query string to avoid legacy malformed params.
-			u.RawQuery = ""
-			q := url.Values{}
-			q.Set("token", token)
-			u.RawQuery = q.Encode()
-			return u.String()
+	lowerRaw := strings.ToLower(strings.TrimSpace(baseURL))
+	if strings.Contains(lowerRaw, "/verify-email") || strings.Contains(lowerRaw, "/reset-password") {
+		canonicalBase := baseURL
+		if cut := strings.IndexAny(canonicalBase, "?#"); cut >= 0 {
+			canonicalBase = canonicalBase[:cut]
 		}
+		canonicalBase = strings.TrimSpace(strings.TrimRight(canonicalBase, "?&"))
+		if canonicalBase == "" {
+			canonicalBase = strings.TrimSpace(fallbackPath)
+		}
+		if canonicalBase == "" {
+			canonicalBase = "/verify-email"
+		}
+		if !strings.Contains(canonicalBase, "://") && !strings.HasPrefix(canonicalBase, "/") {
+			canonicalBase = "/" + strings.TrimLeft(canonicalBase, "/")
+		}
+		return canonicalBase + "?token=" + url.QueryEscape(token)
+	}
 
+	if u, err := url.Parse(baseURL); err == nil {
 		q := u.Query()
 		for key := range q {
 			cleanKey := strings.ToLower(strings.TrimSpace(key))
