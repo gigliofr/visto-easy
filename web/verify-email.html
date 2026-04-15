@@ -8,78 +8,346 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/styles.css">
   <style>
-    body { min-height: 100vh; display: grid; place-items: center; background: linear-gradient(180deg, #f7f8fb 0%, #eef2f8 100%); }
-    .auth-landing { width: min(720px, 92vw); background: rgba(255,255,255,.88); border: 1px solid rgba(34,36,40,.08); border-radius: 28px; padding: 28px; box-shadow: 0 24px 80px rgba(22,24,29,.08); }
-    .auth-landing h1 { margin: 10px 0 12px; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.02; }
-    .auth-landing p { color: var(--muted); max-width: 56ch; }
-    .auth-landing .result { margin-top: 18px; padding: 14px 16px; border-radius: 16px; background: #f7f9fc; border: 1px solid #dce3ee; }
-    .auth-landing .result.ok { border-color: rgba(33, 150, 83, .28); background: rgba(33, 150, 83, .06); }
-    .auth-landing .result.err { border-color: rgba(180, 35, 24, .22); background: rgba(180, 35, 24, .05); }
-    .auth-landing .actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
-    .auth-landing code { word-break: break-all; }
+    :root {
+      --text: #0f172a;
+      --muted: #4b5563;
+      --line: #dce3ee;
+      --surface: rgba(255, 255, 255, 0.92);
+      --ok-bg: rgba(31, 122, 77, 0.08);
+      --err-bg: rgba(180, 35, 24, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Manrope", sans-serif;
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 10% 12%, rgba(2, 132, 199, 0.16), transparent 36%),
+        radial-gradient(circle at 88% 88%, rgba(30, 64, 175, 0.12), transparent 42%),
+        linear-gradient(180deg, #f6f9ff 0%, #eef3fa 100%);
+      padding: 26px;
+    }
+
+    .verify-shell {
+      width: min(860px, 100%);
+      border-radius: 30px;
+      border: 1px solid rgba(15, 23, 42, 0.1);
+      background: var(--surface);
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.13);
+      overflow: hidden;
+    }
+
+    .verify-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid rgba(15, 23, 42, 0.07);
+      background: rgba(255, 255, 255, 0.76);
+    }
+
+    .brand {
+      font-weight: 800;
+      color: #0b4dbb;
+      letter-spacing: 0.01em;
+    }
+
+    .lang-switch {
+      display: inline-flex;
+      gap: 6px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+    }
+
+    .lang-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      border-radius: 999px;
+      min-width: 36px;
+      min-height: 30px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+
+    .lang-btn[aria-pressed="true"] {
+      border-color: rgba(15, 23, 42, 0.12);
+      background: rgba(15, 23, 42, 0.06);
+    }
+
+    .verify-main {
+      padding: 24px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .illustration {
+      width: min(240px, 68vw);
+      aspect-ratio: 1 / 1;
+      border-radius: 999px;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      background:
+        radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.24), transparent 45%),
+        radial-gradient(circle at 80% 80%, rgba(30, 64, 175, 0.18), transparent 45%),
+        #f9fbff;
+      display: grid;
+      place-items: center;
+      box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 0.7), 0 18px 34px rgba(15, 23, 42, 0.12);
+    }
+
+    .illustration svg {
+      width: 72%;
+      height: auto;
+      display: block;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 4.2vw, 2.9rem);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      max-width: 16ch;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      max-width: 56ch;
+      font-size: 1.02rem;
+    }
+
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: #f8fbff;
+      color: #243145;
+      font-weight: 600;
+    }
+
+    .status.ok {
+      border-color: rgba(31, 122, 77, 0.35);
+      background: var(--ok-bg);
+      color: #155c39;
+    }
+
+    .status.err {
+      border-color: rgba(180, 35, 24, 0.3);
+      background: var(--err-bg);
+      color: #8f2419;
+    }
+
+    .redirect-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: #0f172a;
+      color: #fff;
+      box-shadow: 0 10px 18px rgba(15, 23, 42, 0.18);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: #0f172a;
+      border-color: var(--line);
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 14px;
+      }
+
+      .verify-main {
+        padding: 20px 16px;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
-  <main class="auth-landing">
-    <div class="actions" style="justify-content: flex-end; margin-top: 0;">
-      <button class="btn btn-ghost" type="button" data-lang="it" aria-pressed="true">🇮🇹</button>
-      <button class="btn btn-ghost" type="button" data-lang="en" aria-pressed="false">🇬🇧</button>
-    </div>
-    <p class="eyebrow">Visto Easy</p>
-    <h1 id="titleText">Verifica il tuo indirizzo email.</h1>
-    <p id="subtitleText">Questa pagina completa l'attivazione dell'account richiesto in fase di registrazione.</p>
-    <div id="resultBox" class="result">Verifica in corso...</div>
-    <div class="actions">
-      <a class="btn btn-solid" id="btnHome" href="/">Torna alla home</a>
-      <a class="btn btn-ghost" id="btnLogin" href="/#auth">Vai al login</a>
-    </div>
+  <main class="verify-shell">
+    <header class="verify-top">
+      <span class="brand">Visto Easy</span>
+      <div class="lang-switch" aria-label="Language selector">
+        <button class="lang-btn" type="button" data-lang="it" aria-pressed="true">🇮🇹</button>
+        <button class="lang-btn" type="button" data-lang="en" aria-pressed="false">🇬🇧</button>
+      </div>
+    </header>
+
+    <section class="verify-main">
+      <div class="hero">
+        <div class="illustration" aria-hidden="true">
+          <svg viewBox="0 0 220 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="110" cy="110" r="94" fill="url(#g1)"/>
+            <rect x="57" y="58" width="106" height="132" rx="18" fill="#ffffff" stroke="#C7D7EE" stroke-width="3"/>
+            <rect x="73" y="82" width="74" height="9" rx="4.5" fill="#DCE8F8"/>
+            <rect x="73" y="100" width="62" height="9" rx="4.5" fill="#E7EEF9"/>
+            <rect x="73" y="118" width="52" height="9" rx="4.5" fill="#EFF4FB"/>
+            <circle cx="149" cy="160" r="30" fill="#E9F9F0" stroke="#93D9B2" stroke-width="3"/>
+            <path d="M136 161L146 171L164 150" stroke="#1F7A4D" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs>
+              <linearGradient id="g1" x1="34" y1="32" x2="186" y2="188" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#D8E8FF"/>
+                <stop offset="1" stop-color="#EEF5FF"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1 id="titleText">Registrazione completata con successo.</h1>
+        <p class="subtitle" id="subtitleText">Stiamo verificando il tuo indirizzo email per attivare il tuo profilo e permetterti di usare tutti i servizi.</p>
+      </div>
+
+      <div id="resultBox" class="status">Verifica in corso...</div>
+      <p id="redirectNote" class="redirect-note" hidden></p>
+
+      <div class="actions">
+        <a class="btn btn-primary" id="btnLogin" href="/#auth">Vai al login</a>
+        <a class="btn btn-secondary" id="btnHome" href="/">Torna alla home</a>
+      </div>
+    </section>
   </main>
+
   <script>
-    (async () => {
+    (() => {
       const LANG_KEY = 'visto_easy_lang_v1';
+      const REDIRECT_SECONDS = 6;
+      let redirectTimer = null;
+      let redirectRemaining = REDIRECT_SECONDS;
+
       const STRINGS = {
         it: {
-          title: 'Verifica il tuo indirizzo email.',
-          subtitle: 'Questa pagina completa l\'attivazione dell\'account richiesto in fase di registrazione.',
+          title: 'Registrazione completata con successo.',
+          subtitle: 'Stiamo verificando il tuo indirizzo email per attivare il tuo profilo e permetterti di usare tutti i servizi.',
           checking: 'Verifica in corso...',
-          noToken: 'Token mancante. Apri il link ricevuto via email.',
+          noToken: 'Link non valido: token mancante. Apri il link ricevuto via email.',
           failed: 'Verifica non riuscita',
-          success: 'Email verificata con successo. Ora puoi accedere al tuo account.',
-          home: 'Torna alla home',
+          success: 'Email verificata. Il tuo account e ora attivo.',
+          redirect: 'Verrai reindirizzato al login tra {seconds} secondi.',
           login: 'Vai al login',
+          home: 'Torna alla home'
         },
         en: {
-          title: 'Verify your email address.',
-          subtitle: 'This page completes account activation requested during registration.',
-          checking: 'Verifying...',
-          noToken: 'Missing token. Open the link received by email.',
+          title: 'Registration completed successfully.',
+          subtitle: 'We are verifying your email address to activate your profile and unlock all services.',
+          checking: 'Verification in progress...',
+          noToken: 'Invalid link: missing token. Open the link received by email.',
           failed: 'Verification failed',
-          success: 'Email successfully verified. You can now sign in to your account.',
-          home: 'Back to home',
+          success: 'Email verified. Your account is now active.',
+          redirect: 'You will be redirected to login in {seconds} seconds.',
           login: 'Go to login',
-        },
+          home: 'Back to home'
+        }
       };
+
       const normalizeLang = (lang) => (String(lang || '').toLowerCase() === 'en' ? 'en' : 'it');
       const getLang = () => normalizeLang(window.localStorage.getItem(LANG_KEY) || document.documentElement.lang || navigator.language?.slice(0, 2));
       let lang = getLang();
 
       const titleText = document.getElementById('titleText');
       const subtitleText = document.getElementById('subtitleText');
-      const btnHome = document.getElementById('btnHome');
+      const resultBox = document.getElementById('resultBox');
+      const redirectNote = document.getElementById('redirectNote');
       const btnLogin = document.getElementById('btnLogin');
-      const box = document.getElementById('resultBox');
-      const applyLang = () => {
-        const s = STRINGS[lang];
-        document.documentElement.lang = lang;
-        titleText.textContent = s.title;
-        subtitleText.textContent = s.subtitle;
-        btnHome.textContent = s.home;
-        btnLogin.textContent = s.login;
-        if (!box.dataset.state || box.dataset.state === 'checking') {
-          box.textContent = s.checking;
+      const btnHome = document.getElementById('btnHome');
+
+      const t = (key, params = {}) => {
+        const value = STRINGS[lang][key] || STRINGS.it[key] || key;
+        return String(value).replace(/\{([a-zA-Z0-9_]+)\}/g, (_m, token) => String(params[token] ?? ''));
+      };
+
+      const updateRedirectText = () => {
+        redirectNote.textContent = t('redirect', { seconds: redirectRemaining });
+      };
+
+      const setRedirectCountdown = (seconds) => {
+        if (redirectTimer) {
+          clearInterval(redirectTimer);
+          redirectTimer = null;
         }
+
+        redirectRemaining = seconds;
+        redirectNote.hidden = false;
+        updateRedirectText();
+
+        redirectTimer = window.setInterval(() => {
+          redirectRemaining -= 1;
+          if (redirectRemaining <= 0) {
+            clearInterval(redirectTimer);
+            redirectTimer = null;
+            window.location.href = '/#auth';
+            return;
+          }
+          updateRedirectText();
+        }, 1000);
+      };
+
+      const applyLang = () => {
+        document.documentElement.lang = lang;
+        titleText.textContent = t('title');
+        subtitleText.textContent = t('subtitle');
+        btnLogin.textContent = t('login');
+        btnHome.textContent = t('home');
+
+        if (!resultBox.dataset.state || resultBox.dataset.state === 'checking') {
+          resultBox.textContent = t('checking');
+        }
+
+        if (!redirectNote.hidden) {
+          updateRedirectText();
+        }
+
         document.querySelectorAll('[data-lang]').forEach((btn) => {
           const active = btn.getAttribute('data-lang') === lang;
           btn.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -93,31 +361,40 @@
           applyLang();
         });
       });
+
       applyLang();
 
       const token = new URLSearchParams(window.location.search).get('token') || '';
       if (!token) {
-        box.className = 'result err';
-        box.dataset.state = 'error';
-        box.textContent = STRINGS[lang].noToken;
+        resultBox.className = 'status err';
+        resultBox.dataset.state = 'error';
+        resultBox.textContent = t('noToken');
+        redirectNote.hidden = true;
         return;
       }
-      try {
-        const response = await fetch('/api/auth/verify-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
+
+      fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      })
+        .then(async (response) => {
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error((data && (data.error || data.message)) || t('failed'));
+          }
+
+          resultBox.className = 'status ok';
+          resultBox.dataset.state = 'success';
+          resultBox.textContent = t('success');
+          setRedirectCountdown(REDIRECT_SECONDS);
+        })
+        .catch((err) => {
+          resultBox.className = 'status err';
+          resultBox.dataset.state = 'error';
+          resultBox.textContent = err.message || t('failed');
+          redirectNote.hidden = true;
         });
-        const data = await response.json().catch(() => null);
-        if (!response.ok) throw new Error((data && (data.error || data.message)) || STRINGS[lang].failed);
-        box.className = 'result ok';
-        box.dataset.state = 'success';
-        box.innerHTML = STRINGS[lang].success;
-      } catch (err) {
-        box.className = 'result err';
-        box.dataset.state = 'error';
-        box.textContent = err.message || STRINGS[lang].failed;
-      }
     })();
   </script>
 </body>
