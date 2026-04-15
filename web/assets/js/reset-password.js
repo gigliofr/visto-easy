@@ -51,27 +51,57 @@
 
   const t = (key) => STRINGS[lang][key] || STRINGS.it[key] || key;
 
+  const pickHexToken = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const m = raw.match(/([A-Fa-f0-9]{24,128})/);
+    return m ? m[1] : '';
+  };
+
+  const safeDecode = (value) => {
+    try {
+      return decodeURIComponent(String(value || ''));
+    } catch (_err) {
+      return String(value || '');
+    }
+  };
+
   const extractTokenFromURL = () => {
     const params = new URLSearchParams(window.location.search);
-    const direct = String(params.get('token') || '').trim();
+    const direct = pickHexToken(params.get('token'));
     if (direct) return direct;
 
     for (const [key, value] of params.entries()) {
-      const v = String(value || '').trim();
-      if (key === 'token' && v) return v;
+      const v = pickHexToken(value);
+      if (String(key || '').toLowerCase() === 'token' && v) return v;
 
-      const keyToken = String(key || '').trim();
-      const m = keyToken.match(/^token=?([A-Fa-f0-9]{24,})$/i);
-      if (m && m[1]) return m[1];
+      const keyRaw = String(key || '').trim();
+      if (/^token/i.test(keyRaw)) {
+        const keyToken = pickHexToken(keyRaw.replace(/^token/i, ''));
+        if (keyToken) return keyToken;
+      }
+
+      const merged = pickHexToken(`${keyRaw}${value || ''}`);
+      if (merged) return merged;
     }
 
-    const rawQuery = String(window.location.search || '').replace(/^\?/, '').trim();
-    const queryMatch = rawQuery.match(/(?:^|[?&])token=?([A-Fa-f0-9]{24,})(?:&|$)/i);
-    if (queryMatch && queryMatch[1]) return queryMatch[1];
+    const pathMatch = String(window.location.pathname || '').match(/\/reset-password\/([A-Fa-f0-9]{24,128})$/i);
+    if (pathMatch && pathMatch[1]) return pathMatch[1];
 
+    const rawQuery = String(window.location.search || '').replace(/^\?/, '').trim();
     const rawHash = String(window.location.hash || '').replace(/^#/, '').trim();
-    const hashMatch = rawHash.match(/(?:^|[?&])token=?([A-Fa-f0-9]{24,})(?:&|$)/i);
-    if (hashMatch && hashMatch[1]) return hashMatch[1];
+
+    const tokenLikeQuery = safeDecode(rawQuery).match(/token[^A-Fa-f0-9]*([A-Fa-f0-9]{24,128})/i);
+    if (tokenLikeQuery && tokenLikeQuery[1]) return tokenLikeQuery[1];
+
+    const tokenLikeHash = safeDecode(rawHash).match(/token[^A-Fa-f0-9]*([A-Fa-f0-9]{24,128})/i);
+    if (tokenLikeHash && tokenLikeHash[1]) return tokenLikeHash[1];
+
+    const genericQuery = pickHexToken(safeDecode(rawQuery));
+    if (genericQuery) return genericQuery;
+
+    const genericHash = pickHexToken(safeDecode(rawHash));
+    if (genericHash) return genericHash;
 
     return '';
   };
