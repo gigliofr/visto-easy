@@ -420,7 +420,7 @@ async function loadCountriesIntoSelect() {
 
   countries.sort((a, b) => a.label.localeCompare(b.label, 'it'));
   select.innerHTML = [
-    '<option value="" disabled selected>Seleziona paese</option>',
+    `<option value="" disabled selected>${t('rich.create.selectCountry')}</option>`,
     ...countries.map((c) => `<option value="${c.code}">${c.flag} ${c.label} (${c.code})</option>`),
   ].join('');
 }
@@ -442,7 +442,7 @@ function wireDocUploadMetadata() {
       sizeInput.value = '';
       return;
     }
-    nameInput.value = file.name || 'documento';
+    nameInput.value = file.name || t('rich.documents.defaultFileName');
     mimeInput.value = file.type || 'application/octet-stream';
     sizeInput.value = String(file.size || 0);
   });
@@ -535,12 +535,12 @@ function populateDocPraticaSelect(pratiche, preferredID = '') {
   if (!select) return;
 
   if (!pratiche || pratiche.length === 0) {
-    select.innerHTML = '<option value="" disabled selected>Nessuna pratica disponibile</option>';
+    select.innerHTML = `<option value="" disabled selected>${t('rich.documents.noPractice')}</option>`;
     return;
   }
 
   select.innerHTML = [
-    '<option value="" disabled>Seleziona una pratica</option>',
+    `<option value="" disabled>${t('rich.documents.selectPractice')}</option>`,
     ...pratiche.map((p) => `<option value="${p.id}">${p.codice || p.id} - ${p.stato || '-'}</option>`),
   ].join('');
 
@@ -567,9 +567,9 @@ async function loadMiePratiche(preferredPraticaID = '') {
       <h3>${p.codice || p.id} - ${p.stato}</h3>
       <p>${p.tipo_visto || '-'} | ${p.paese_dest || '-'} | ${new Date(p.creato_il).toLocaleString()}</p>
       <div class="inline-actions" data-pratica-id="${p.id}">
-        ${isDraftPractice(p) ? '<button class="btn btn-ghost" type="button" data-action="submit">Invia</button>' : ''}
-        ${isDraftPractice(p) ? '<button class="btn btn-ghost" type="button" data-action="delete">Elimina</button>' : ''}
-        <button class="btn btn-ghost" type="button" data-action="docs">Documenti</button>
+        ${isDraftPractice(p) ? `<button class="btn btn-ghost" type="button" data-action="submit">${t('rich.actions.submit')}</button>` : ''}
+        ${isDraftPractice(p) ? `<button class="btn btn-ghost" type="button" data-action="delete">${t('rich.actions.delete')}</button>` : ''}
+        <button class="btn btn-ghost" type="button" data-action="docs">${t('rich.actions.documents')}</button>
       </div>
     </article>
   `);
@@ -661,15 +661,15 @@ function sortBackofficePratiche(items) {
 }
 
 function getOperatorLabel(p) {
-  if (!p.operatore_id) return 'Non assegnata';
+  if (!p.operatore_id) return t('bo.operator.unassigned');
   const op = boState.operators.find((item) => item.id === p.operatore_id);
   if (op) {
     const fullName = `${op.nome || ''} ${op.cognome || ''}`.trim();
-    if (p.operatore_id === getBackofficeUserId()) return `${fullName || op.email} (io)`;
+    if (p.operatore_id === getBackofficeUserId()) return `${fullName || op.email} (${t('bo.operator.meShort')})`;
     return fullName || op.email;
   }
-  if (p.operatore_id === getBackofficeUserId()) return 'Assegnata a me';
-  return 'Assegnata';
+  if (p.operatore_id === getBackofficeUserId()) return t('bo.operator.assignedToMe');
+  return t('bo.operator.assigned');
 }
 
 function renderBOAssignOperators() {
@@ -683,10 +683,10 @@ function renderBOAssignOperators() {
       return `<option value="${op.id}">${label}</option>`;
     })
     .join('');
-  select.innerHTML = '<option value="" selected disabled>Seleziona operatore disponibile</option>' + options;
+  select.innerHTML = `<option value="" selected disabled>${t('bo.assign.selectOperator')}</option>` + options;
   select.disabled = boState.operators.length === 0;
   if (boState.operators.length === 0) {
-    select.innerHTML = '<option value="" selected disabled>Nessun operatore disponibile</option>';
+    select.innerHTML = `<option value="" selected disabled>${t('bo.assign.noOperator')}</option>`;
   }
   if (current && boState.operators.some((op) => op.id === current)) {
     select.value = current;
@@ -728,7 +728,7 @@ function setBOInviteOperatorBox(open) {
   box.classList.toggle('hidden', !isOpen);
   box.hidden = !isOpen;
   button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-  button.textContent = isOpen ? 'Chiudi invito operatore' : 'Invita nuovo operatore';
+  button.textContent = isOpen ? t('bo.invite.close') : t('bo.invite.open');
 }
 
 function wireBOInviteOperatorToggle() {
@@ -790,21 +790,21 @@ async function loadBOPraticaDocumenti(praticaID) {
   const docsContainer = document.getElementById('boDetailDocumenti');
   const previewContainer = document.getElementById('boDocPreview');
   if (!docsContainer || !praticaID) return;
-  docsContainer.innerHTML = '<p class="helper-text">Caricamento documenti...</p>';
+  docsContainer.innerHTML = `<p class="helper-text">${t('bo.docs.loading')}</p>`;
   try {
     const docs = await api(`/api/pratiche/${praticaID}/documenti`);
     if (!Array.isArray(docs) || !docs.length) {
-      docsContainer.innerHTML = '<p class="helper-text">Nessun documento disponibile.</p>';
-      if (previewContainer) previewContainer.innerHTML = '<p class="helper-text">Anteprima non disponibile.</p>';
+      docsContainer.innerHTML = `<p class="helper-text">${t('bo.docs.empty')}</p>`;
+      if (previewContainer) previewContainer.innerHTML = `<p class="helper-text">${t('bo.docs.previewUnavailable')}</p>`;
       return;
     }
     docsContainer.innerHTML = docs.map((d) => `
       <article class="bo-doc-item">
-        <h4>${d.nome_file || 'Documento'}</h4>
+        <h4>${d.nome_file || t('bo.docs.document')}</h4>
         <p>${d.tipo || '-'} | ${(d.mime_type || '-').toLowerCase()} | ${d.dimensione || 0} bytes</p>
         <div class="inline-actions">
-          <button class="btn btn-ghost" type="button" data-doc-preview-id="${d.id}" data-doc-preview-mime="${d.mime_type || ''}" data-doc-preview-name="${d.nome_file || ''}">Anteprima</button>
-          <a class="btn btn-ghost" href="/api/pratiche/${praticaID}/documenti/${d.id}/download" target="_blank" rel="noopener noreferrer">Scarica</a>
+          <button class="btn btn-ghost" type="button" data-doc-preview-id="${d.id}" data-doc-preview-mime="${d.mime_type || ''}" data-doc-preview-name="${d.nome_file || ''}">${t('bo.docs.preview')}</button>
+          <a class="btn btn-ghost" href="/api/pratiche/${praticaID}/documenti/${d.id}/download" target="_blank" rel="noopener noreferrer">${t('bo.docs.download')}</a>
         </div>
       </article>
     `).join('');
@@ -813,16 +813,16 @@ async function loadBOPraticaDocumenti(praticaID) {
       button.addEventListener('click', () => {
         const docID = button.dataset.docPreviewId;
         const mime = button.dataset.docPreviewMime || '';
-        const fileName = button.dataset.docPreviewName || 'Documento';
+        const fileName = button.dataset.docPreviewName || t('bo.docs.document');
         renderBODocumentPreview(praticaID, docID, mime, fileName);
       });
     });
 
     const first = docs[0];
-    renderBODocumentPreview(praticaID, first.id, first.mime_type || '', first.nome_file || 'Documento');
+    renderBODocumentPreview(praticaID, first.id, first.mime_type || '', first.nome_file || t('bo.docs.document'));
   } catch (err) {
     docsContainer.innerHTML = `<p class="helper-text">${extractErrMessage(err)}</p>`;
-    if (previewContainer) previewContainer.innerHTML = '<p class="helper-text">Anteprima non disponibile.</p>';
+    if (previewContainer) previewContainer.innerHTML = `<p class="helper-text">${t('bo.docs.previewUnavailable')}</p>`;
   }
 }
 
@@ -851,8 +851,8 @@ function renderBODocumentPreview(praticaID, docID, mimeType, fileName) {
   }
 
   previewContainer.innerHTML = `
-    <p class="helper-text">Anteprima non disponibile per questo formato.</p>
-    <a class="btn btn-ghost" href="${downloadURL}" target="_blank" rel="noopener noreferrer">Apri documento</a>
+    <p class="helper-text">${t('bo.docs.previewUnsupported')}</p>
+    <a class="btn btn-ghost" href="${downloadURL}" target="_blank" rel="noopener noreferrer">${t('bo.docs.open')}</a>
   `;
 }
 
@@ -860,7 +860,7 @@ function renderBackofficeDetail(pratica) {
   const detail = document.getElementById('boPraticaDetail');
   if (!detail) return;
   if (!pratica) {
-    detail.innerHTML = '<p class="helper-text">Seleziona una pratica dalla tabella per vedere i dettagli.</p>';
+    detail.innerHTML = `<p class="helper-text">${t('bo.detail.selectPractice')}</p>`;
     detail.classList.add('hidden');
     detail.classList.remove('focus');
     return;
@@ -873,42 +873,42 @@ function renderBackofficeDetail(pratica) {
       <div>
         <h3>${pratica.codice || pratica.id}</h3>
         <p>${pratica.tipo_visto || '-'} | ${pratica.paese_dest || '-'}</p>
-        <p class="helper-text">Richiedente: ${getRichiedenteLabel(pratica)}</p>
+        <p class="helper-text">${t('bo.detail.requester')}: ${getRichiedenteLabel(pratica)}</p>
       </div>
-      <button class="btn btn-ghost" type="button" data-bo-action="back">Torna elenco</button>
+      <button class="btn btn-ghost" type="button" data-bo-action="back">${t('bo.detail.backToList')}</button>
     </div>
     <p><span class="${getStatusBadgeClass(pratica.stato)}">${pratica.stato || '-'}</span> <span class="bo-status-badge">${getOperatorLabel(pratica)}</span></p>
-    <p class="helper-text">Aggiornata ${new Date(pratica.aggiornato_il || pratica.creato_il).toLocaleString()}</p>
+    <p class="helper-text">${t('bo.detail.updatedAt')} ${new Date(pratica.aggiornato_il || pratica.creato_il).toLocaleString()}</p>
     <div class="bo-detail-actions">
-      <button class="btn btn-solid" type="button" data-bo-action="assign-me">Assegna a me</button>
-      <button class="btn btn-ghost" type="button" data-bo-action="show-docs">Vedi documenti</button>
+      <button class="btn btn-solid" type="button" data-bo-action="assign-me">${t('bo.detail.assignToMe')}</button>
+      <button class="btn btn-ghost" type="button" data-bo-action="show-docs">${t('bo.detail.showDocs')}</button>
     </div>
     <section class="bo-detail-grid">
       <article class="bo-detail-card">
-        <h4>Dati pratica</h4>
+        <h4>${t('bo.detail.caseData')}</h4>
         <p><strong>ID:</strong> ${pratica.id || '-'}</p>
-        <p><strong>Priorita:</strong> ${pratica.priorita || '-'}</p>
-        <p><strong>Operatore:</strong> ${pratica.operatore_id || 'non assegnata'}</p>
+        <p><strong>${t('bo.detail.priority')}:</strong> ${pratica.priorita || '-'}</p>
+        <p><strong>${t('bo.detail.operator')}:</strong> ${pratica.operatore_id || t('bo.operator.unassigned')}</p>
       </article>
       <article class="bo-detail-card">
-        <h4>Note richiedente</h4>
-        <p>${pratica.note_richiedente || 'Nessuna nota richiedente'}</p>
+        <h4>${t('bo.detail.requesterNotes')}</h4>
+        <p>${pratica.note_richiedente || t('bo.detail.noRequesterNotes')}</p>
       </article>
       <article class="bo-detail-card">
-        <h4>Note interne</h4>
-        <p>${pratica.note_interne || 'Nessuna nota interna'}</p>
+        <h4>${t('bo.detail.internalNotes')}</h4>
+        <p>${pratica.note_interne || t('bo.detail.noInternalNotes')}</p>
         <div class="bo-inline-note-editor">
-          <label>Nuova nota interna
-            <textarea id="boDetailInternalNote" rows="3" placeholder="Aggiungi una nota interna operativa"></textarea>
+          <label>${t('bo.detail.newInternalNote')}
+            <textarea id="boDetailInternalNote" rows="3" placeholder="${t('bo.detail.newInternalNotePlaceholder')}"></textarea>
           </label>
-          <button class="btn btn-ghost" type="button" data-bo-action="add-internal-note">Salva nota interna</button>
+          <button class="btn btn-ghost" type="button" data-bo-action="add-internal-note">${t('bo.detail.saveInternalNote')}</button>
         </div>
       </article>
     </section>
     <section class="bo-detail-card">
-      <h4>Documenti</h4>
-      <div id="boDetailDocumenti"><p class="helper-text">Premi "Vedi documenti" per caricare l'elenco.</p></div>
-      <div id="boDocPreview" class="bo-doc-preview"><p class="helper-text">Seleziona un documento per l'anteprima.</p></div>
+      <h4>${t('bo.docs.sectionTitle')}</h4>
+      <div id="boDetailDocumenti"><p class="helper-text">${t('bo.docs.pressShowToLoad')}</p></div>
+      <div id="boDocPreview" class="bo-doc-preview"><p class="helper-text">${t('bo.docs.selectForPreview')}</p></div>
     </section>
   `;
 
@@ -976,9 +976,9 @@ function renderBOPraticheTable() {
   if (!container) return;
 
   if (!filteredRows.length) {
-    container.innerHTML = '<div class="list-item"><p>Nessuna pratica trovata</p></div>';
+    container.innerHTML = `<div class="list-item"><p>${t('bo.table.noCases')}</p></div>`;
     const pager = document.getElementById('boPagination');
-    if (pager) pager.innerHTML = '<span class="pager-info">0 risultati</span>';
+    if (pager) pager.innerHTML = `<span class="pager-info">${t('bo.table.zeroResults')}</span>`;
     renderBackofficeDetail(null);
     return;
   }
@@ -994,13 +994,13 @@ function renderBOPraticheTable() {
     <table class="bo-table">
       <thead>
         <tr>
-          <th>Codice</th>
-          <th>Richiedente</th>
-          <th>Stato</th>
-          <th>Assegnazione</th>
-          <th>Tipo visto</th>
-          <th>Paese</th>
-          <th>Aggiornata</th>
+          <th>${t('bo.table.code')}</th>
+          <th>${t('bo.table.requester')}</th>
+          <th>${t('bo.table.status')}</th>
+          <th>${t('bo.table.assignment')}</th>
+          <th>${t('bo.table.visaType')}</th>
+          <th>${t('bo.table.country')}</th>
+          <th>${t('bo.table.updated')}</th>
         </tr>
       </thead>
       <tbody>
@@ -1022,9 +1022,9 @@ function renderBOPraticheTable() {
   const pager = document.getElementById('boPagination');
   if (pager) {
     pager.innerHTML = `
-      <button class="btn btn-ghost" type="button" data-bo-page="prev" ${boState.page <= 1 ? 'disabled' : ''}>Precedente</button>
-      <span class="pager-info">Pagina ${boState.page} di ${totalPages} (${totalRows} risultati)</span>
-      <button class="btn btn-ghost" type="button" data-bo-page="next" ${boState.page >= totalPages ? 'disabled' : ''}>Successiva</button>
+      <button class="btn btn-ghost" type="button" data-bo-page="prev" ${boState.page <= 1 ? 'disabled' : ''}>${t('bo.pager.prev')}</button>
+      <span class="pager-info">${t('bo.pager.summary', { page: boState.page, totalPages, totalRows })}</span>
+      <button class="btn btn-ghost" type="button" data-bo-page="next" ${boState.page >= totalPages ? 'disabled' : ''}>${t('bo.pager.next')}</button>
     `;
     pager.querySelector('[data-bo-page="prev"]')?.addEventListener('click', () => {
       if (boState.page <= 1) return;
@@ -1072,7 +1072,7 @@ function renderBONewPratiche() {
   if (!container) return;
   const newRows = boState.items.filter((p) => isUnassignedPractice(p) && (normalizeBackofficeText(p.stato) === 'bozza' || normalizeBackofficeText(p.stato) === 'inviata'));
   if (!newRows.length) {
-    container.innerHTML = '<div class="list-item"><p>Nessuna pratica nuova da assegnare</p></div>';
+    container.innerHTML = `<div class="list-item"><p>${t('bo.new.noCases')}</p></div>`;
     return;
   }
 
@@ -1087,7 +1087,7 @@ function renderBONewPratiche() {
         <span class="${getStatusBadgeClass(p.stato)}">${p.stato || '-'}</span>
       </div>
       <p class="helper-text">${new Date(p.aggiornato_il || p.creato_il).toLocaleString()}</p>
-      <button class="btn btn-solid" type="button" data-assign-id="${p.id}">Assegna a me</button>
+      <button class="btn btn-solid" type="button" data-assign-id="${p.id}">${t('bo.detail.assignToMe')}</button>
     </article>
   `).join('');
 
@@ -1220,7 +1220,7 @@ function wireBackofficeFiltersToggle() {
   const sync = () => {
     const expanded = !panel.classList.contains('hidden');
     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    toggle.textContent = expanded ? 'Nascondi filtri avanzati' : 'Filtri avanzati';
+    toggle.textContent = expanded ? t('bo.filters.hideAdvanced') : t('bo.filters.advanced');
   };
 
   sync();
@@ -1266,17 +1266,17 @@ function renderSettingsAccountInfo() {
   const twoFAStatus = document.getElementById('settings2FAStatus');
   const twoFAHint = document.getElementById('settings2FAHint');
   const totpEnabled = Boolean(state.user?.totp_enabled ?? state.user?.totpEnabled);
-  if (roleEl) roleEl.textContent = role() || 'ospite';
-  if (userEl) userEl.textContent = state.user?.email || 'non autenticato';
+  if (roleEl) roleEl.textContent = role() || t('session.guest');
+  if (userEl) userEl.textContent = state.user?.email || t('session.notAuth');
   if (twoFAStatus) {
     twoFAStatus.classList.toggle('settings-pill--ok', totpEnabled);
     twoFAStatus.classList.toggle('settings-pill--warn', !totpEnabled);
-    twoFAStatus.textContent = totpEnabled ? 'Attivo' : 'Non attivo';
+    twoFAStatus.textContent = totpEnabled ? t('settings.security.enabled') : t('settings.security.disabled');
   }
   if (twoFAHint) {
     twoFAHint.textContent = totpEnabled
-      ? 'Il secondo fattore e attivo. Mantieni al sicuro i codici della tua app autenticatore.'
-      : 'Il secondo fattore non e ancora abilitato su questo account.';
+      ? t('settings.security.enabledHint')
+      : t('settings.security.disabledHint');
   }
 }
 
@@ -1374,7 +1374,7 @@ async function loadBOUsers() {
   if (pendingContainer) renderList(pendingContainer, invitiPendenti, (u) => `
     <article class="list-item">
       <h3>${u.email}</h3>
-      <p>${u.nome || ''} ${u.cognome || ''} | Invito in attesa</p>
+      <p>${u.nome || ''} ${u.cognome || ''} | ${t('bo.users.invitePending')}</p>
     </article>
   `);
 
@@ -1596,9 +1596,11 @@ function wireForms() {
           const preview = validation.errors.slice(0, 5).join(' | ');
           if (feedback) {
             feedback.hidden = false;
-            feedback.textContent = `Compilazione incompleta. Mancano: ${preview}${validation.errors.length > 5 ? ' ...' : ''}`;
+            feedback.textContent = t('rich.create.validationMissing', {
+              preview: `${preview}${validation.errors.length > 5 ? ' ...' : ''}`,
+            });
           }
-          notify('err', `Compila i campi obbligatori (${validation.errors.length})`);
+          notify('err', t('rich.create.validationCount', { count: validation.errors.length }));
           return;
         }
         const richAttrs = collectRichAttributes();
@@ -1618,9 +1620,9 @@ function wireForms() {
         notify('ok', t('ops.ok.practiceCreated'));
         const createdID = data.id || data.pratica?.id || '';
         if (feedback) {
-          const code = data.codice || data.pratica?.codice || createdID || 'nuova pratica';
+          const code = data.codice || data.pratica?.codice || createdID || t('rich.create.newCaseFallback');
           feedback.hidden = false;
-          feedback.textContent = `Pratica creata con successo: ${code}`;
+          feedback.textContent = t('rich.create.createdOk', { code });
         }
         showRichTab('active');
         await loadMiePratiche(createdID);
@@ -1628,7 +1630,7 @@ function wireForms() {
     } catch (err) {
       if (feedback) {
         feedback.hidden = false;
-        feedback.textContent = `Errore creazione pratica: ${extractErrMessage(err)}`;
+        feedback.textContent = t('rich.create.error', { error: extractErrMessage(err) });
       }
       notify('err', extractErrMessage(err));
     }
@@ -1745,7 +1747,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const praticaID = resolveBOPraticaID(payload.id);
-        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        if (!praticaID) throw new Error(t('ops.err.selectPracticeFirst'));
         const data = await api(`/api/bo/pratiche/${praticaID}/stato`, {
           method: 'PATCH',
           body: JSON.stringify({ stato: payload.stato, nota: payload.nota }),
@@ -1766,7 +1768,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const praticaID = resolveBOPraticaID(payload.id);
-        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        if (!praticaID) throw new Error(t('ops.err.selectPracticeFirst'));
         const data = await api(`/api/bo/pratiche/${praticaID}/note`, {
           method: 'POST',
           body: JSON.stringify({
@@ -1789,7 +1791,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const praticaID = resolveBOPraticaID(payload.id);
-        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        if (!praticaID) throw new Error(t('ops.err.selectPracticeFirst'));
         const data = await api(`/api/bo/pratiche/${praticaID}/assegna`, {
           method: 'POST',
           body: JSON.stringify({ operatore_id: payload.operatore_id }),
@@ -1809,7 +1811,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const praticaID = resolveBOPraticaID(payload.id);
-        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        if (!praticaID) throw new Error(t('ops.err.selectPracticeFirst'));
         const data = await api(`/api/bo/pratiche/${praticaID}/richiedi-doc`, {
           method: 'POST',
           body: JSON.stringify({ documento: payload.documento, nota: payload.nota }),
@@ -1829,7 +1831,7 @@ function wireForms() {
       await withBusy(submit, async () => {
         const payload = formJson(ev.currentTarget);
         const praticaID = resolveBOPraticaID(payload.id);
-        if (!praticaID) throw new Error('Seleziona prima una pratica.');
+        if (!praticaID) throw new Error(t('ops.err.selectPracticeFirst'));
         const data = await api(`/api/bo/pratiche/${praticaID}/link-pagamento`, {
           method: 'POST',
           body: JSON.stringify({ provider: payload.provider || 'stripe', importo: Number(payload.importo) }),
