@@ -12,8 +12,8 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/mail"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -43,6 +43,14 @@ type Server struct {
 	mailer  notifications.EmailSender
 	authRL  *simpleRateLimiter
 	loginLT *loginLockTracker
+}
+
+type boSnapshotProvider interface {
+	BONotificationSnapshot() (total int64, inQueue int64, lastUpdated time.Time, emessoOggi int64, err error)
+}
+
+type securityAlertStatsProvider interface {
+	SecurityAlertStats(windowStart time.Time) (failed int64, locked int64, err error)
 }
 
 var (
@@ -316,7 +324,6 @@ func (s *Server) ensureSeedDemoPratiche() {
 				log.Printf("[seed] reassign operator failed for pratica %s: %v", p.ID, err)
 			}
 		}
-
 
 		seedDemoDocumento(p.ID, idx)
 	}
@@ -1388,6 +1395,7 @@ func (s *Server) handleGetPagamento(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "payload non valido")
@@ -2423,6 +2431,26 @@ func (s *Server) buildSecurityAlertSnapshot() map[string]any {
 	}
 	windowStart := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute)
 
+	if provider, ok := s.store.(securityAlertStatsProvider); ok {
+		recentFailed, recentLocked, err := provider.SecurityAlertStats(windowStart)
+		if err == nil {
+			severity := "ok"
+			if recentLocked > 0 {
+				severity = "critical"
+			} else if recentFailed >= int64(failedThreshold) {
+				severity = "warning"
+			}
+			return map[string]any{
+				"severity":             severity,
+				"window_minutes":       windowMinutes,
+				"failed_threshold":     failedThreshold,
+				"recent_failed_logins": recentFailed,
+				"recent_locked_logins": recentLocked,
+				"generated_at":         time.Now().UTC().Format(time.RFC3339),
+			}
+		}
+	}
+
 	recentFailed := 0
 	recentLocked := 0
 	for _, evt := range s.store.ListSecurityEvents() {
@@ -2625,6 +2653,22 @@ func (s *Server) handleBONotificationsStream(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) buildBONotificationSnapshot() map[string]any {
+	if provider, ok := s.store.(boSnapshotProvider); ok {
+		total, inQueue, lastUpdated, emessoOggi, err := provider.BONotificationSnapshot()
+		if err == nil {
+			last := ""
+			if !lastUpdated.IsZero() {
+				last = lastUpdated.UTC().Format(time.RFC3339)
+			}
+			return map[string]any{
+				"totale_pratiche":      total,
+				"in_coda":              inQueue,
+				"ultimo_aggiornamento": last,
+				"emesso_oggi":          emessoOggi,
+			}
+		}
+	}
+
 	all := s.store.ListAllPratiche()
 	inCoda := 0
 	ultimo := time.Time{}

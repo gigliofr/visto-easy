@@ -379,6 +379,42 @@ func (s *MongoStore) ListAllPratiche() []model.Pratica {
 	return out
 }
 
+func (s *MongoStore) BONotificationSnapshot() (total int64, inQueue int64, lastUpdated time.Time, emessoOggi int64, err error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	total, err = s.pratiche.CountDocuments(ctx, bson.M{})
+	if err != nil {
+		return 0, 0, time.Time{}, 0, err
+	}
+
+	inQueue, err = s.pratiche.CountDocuments(ctx, bson.M{"stato": bson.M{"$ne": model.StatoCompletata}})
+	if err != nil {
+		return 0, 0, time.Time{}, 0, err
+	}
+
+	var latest struct {
+		AggiornatoIl time.Time `bson:"aggiornatoil"`
+	}
+	latestErr := s.pratiche.FindOne(ctx, bson.M{}, options.FindOne().SetSort(bson.M{"aggiornatoil": -1}).SetProjection(bson.M{"aggiornatoil": 1})).Decode(&latest)
+	if latestErr == nil {
+		lastUpdated = latest.AggiornatoIl
+	} else if !errorsIsNotFound(latestErr) {
+		return 0, 0, time.Time{}, 0, latestErr
+	}
+
+	dayStart := time.Now().UTC().Add(-24 * time.Hour)
+	emessoOggi, err = s.pratiche.CountDocuments(ctx, bson.M{
+		"stato":        model.StatoVistoEmesso,
+		"aggiornatoil": bson.M{"$gte": dayStart},
+	})
+	if err != nil {
+		return 0, 0, time.Time{}, 0, err
+	}
+
+	return total, inQueue, lastUpdated, emessoOggi, nil
+}
+
 func (s *MongoStore) GetPratica(id string) (model.Pratica, error) {
 	ctx, cancel := s.ctx()
 	defer cancel()
@@ -978,6 +1014,29 @@ func (s *MongoStore) ListSecurityEvents() []model.SecurityEvent {
 		}
 	}
 	return out
+}
+
+func (s *MongoStore) SecurityAlertStats(windowStart time.Time) (failed int64, locked int64, err error) {
+	ctx, cancel := s.ctx()
+	defer cancel()
+
+	failed, err = s.securityEvents.CountDocuments(ctx, bson.M{
+		"type":     "LOGIN_FAILED",
+		"creatoil": bson.M{"$gte": windowStart},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	locked, err = s.securityEvents.CountDocuments(ctx, bson.M{
+		"type":     "LOGIN_LOCKED",
+		"creatoil": bson.M{"$gte": windowStart},
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return failed, locked, nil
 }
 
 func (s *MongoStore) GetSecurityEventByID(id string) (model.SecurityEvent, error) {

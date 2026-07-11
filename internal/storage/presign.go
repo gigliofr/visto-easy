@@ -48,6 +48,10 @@ type MinioPresigner struct {
 	expires time.Duration
 }
 
+func (m *MinioPresigner) operationContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 8*time.Second)
+}
+
 func NewPresignServiceFromEnv() (PresignService, error) {
 	endpoint := strings.TrimSpace(os.Getenv("S3_ENDPOINT"))
 	bucket := strings.TrimSpace(os.Getenv("S3_BUCKET"))
@@ -97,7 +101,9 @@ func (m *MinioPresigner) PresignDocumentUpload(praticaID, fileName, contentType 
 	}
 	key := path.Join("pratiche", praticaID, "documenti", fmt.Sprintf("%s_%s", uuid.NewString(), safeName))
 
-	url, err := m.client.PresignedPutObject(context.Background(), m.bucket, key, m.expires)
+	ctx, cancel := m.operationContext()
+	defer cancel()
+	url, err := m.client.PresignedPutObject(ctx, m.bucket, key, m.expires)
 	if err != nil {
 		return UploadSession{}, fmt.Errorf("presign failed: %w", err)
 	}
@@ -113,7 +119,9 @@ func (m *MinioPresigner) PresignDocumentDownload(key, fileName string) (Download
 		opts.Set("response-content-disposition", fmt.Sprintf("attachment; filename=\"%s\"", safe))
 	}
 
-	url, err := m.client.PresignedGetObject(context.Background(), m.bucket, key, m.expires, opts)
+	ctx, cancel := m.operationContext()
+	defer cancel()
+	url, err := m.client.PresignedGetObject(ctx, m.bucket, key, m.expires, opts)
 	if err != nil {
 		return DownloadSession{}, fmt.Errorf("presign download failed: %w", err)
 	}
