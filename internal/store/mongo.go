@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gigliofr/gokit/mongox"
 	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -36,12 +37,9 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+	client, err := mongox.Connect(ctx, uri, mongox.WithAppName("visto-easy"))
 	if err != nil {
-		return nil, fmt.Errorf("mongo connect failed: %w", err)
-	}
-	if err := client.Ping(ctx, nil); err != nil {
-		return nil, fmt.Errorf("mongo ping failed: %w", err)
+		return nil, err
 	}
 
 	db := client.Database(dbName)
@@ -70,10 +68,12 @@ func NewMongoStore(uri, dbName string) (*MongoStore, error) {
 }
 
 func (s *MongoStore) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return s.client.Disconnect(ctx)
+	mongox.Disconnect(s.client, 10*time.Second)
+	return nil
 }
+
+// Ping verifica che MongoDB risponda (usato dal controllo periodico).
+func (s *MongoStore) Ping(ctx context.Context) error { return mongox.Ping(ctx, s.client) }
 
 func (s *MongoStore) ensureIndexes(ctx context.Context) error {
 	_, err := s.users.Indexes().CreateMany(ctx, []mongo.IndexModel{
