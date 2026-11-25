@@ -25,6 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gigliofr/gokit/envx"
+	"github.com/gigliofr/gokit/httpx"
+	"github.com/gigliofr/gokit/mw"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -41,9 +44,14 @@ type Server struct {
 	tokens  *auth.TokenManager
 	presign storagepkg.PresignService
 	mailer  notifications.EmailSender
-	authRL  *simpleRateLimiter
+	authRL  *mw.Limiter
 	loginLT *loginLockTracker
+	onPanic mw.PanicHook
 }
+
+// SetPanicHook registra la funzione chiamata quando un handler va in panic
+// (es. notifyx.Ops.PanicHook per l'avviso su Telegram).
+func (s *Server) SetPanicHook(h mw.PanicHook) { s.onPanic = h }
 
 type boSnapshotProvider interface {
 	BONotificationSnapshot() (total int64, inQueue int64, lastUpdated time.Time, emessoOggi int64, err error)
@@ -79,7 +87,7 @@ func NewServer(st store.DataStore, tm *auth.TokenManager, presign storagepkg.Pre
 		tokens:  tm,
 		presign: presign,
 		mailer:  notifications.NewEmailSenderFromEnv(),
-		authRL:  newSimpleRateLimiter(limitPerMinute, time.Minute),
+		authRL:  newRateLimiter(limitPerMinute, time.Minute),
 		loginLT: newLoginLockTracker(maxAttempts, time.Duration(windowMinutes)*time.Minute),
 	}
 	srv.ensureSeedBackofficeUsers()
@@ -331,8 +339,9 @@ func (s *Server) ensureSeedDemoPratiche() {
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
-	r.Use(securityHeadersMiddleware)
-	r.Use(corsMiddleware)
+	r.Use(mw.Recover(s.onPanic))
+	r.Use(securityHeadersMiddleware())
+	r.Use(corsMiddleware())
 	r.Use(requestJSON)
 	r.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.Dir(resolveWebPath(filepath.Join("assets"))))))
 
@@ -433,7 +442,7 @@ func (s *Server) Router() http.Handler {
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimSpace(r.URL.Path)
 		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/assets/") {
-			writeErr(w, http.StatusNotFound, "endpoint non trovato")
+			httpx.Error(w, http.StatusNotFound, "endpoint non trovato")
 			return
 		}
 		s.handleRoot(w, r)
@@ -448,7 +457,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, resolveWebPath("index.html"))
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"service": "visto-easy", "status": "running"})
 }
 
 func (s *Server) handlePrivacyPolicy(w http.ResponseWriter, r *http.Request) {
@@ -485,7 +494,7 @@ func resolveWebPath(relative string) string {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -500,32 +509,32 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(req.Email)
 	if email == "" {
-		writeErr(w, http.StatusBadRequest, "email non valida")
+		httpx.Error(w, http.StatusBadRequest, "email non valida")
 		return
 	}
 	parsedEmail, err := mail.ParseAddress(email)
 	if err != nil || strings.TrimSpace(parsedEmail.Address) == "" {
-		writeErr(w, http.StatusBadRequest, "email non valida")
+		httpx.Error(w, http.StatusBadRequest, "email non valida")
 		return
 	}
 	if ok, msg := validateStrongPassword(req.Password); !ok {
-		writeErr(w, http.StatusBadRequest, msg)
+		httpx.Error(w, http.StatusBadRequest, msg)
 		return
 	}
 	pwd, _ := bcrypt.GenerateFromPassword([]byte(req.Password), 12)
 	u, err := s.store.CreateUser(model.Utente{Email: parsedEmail.Address, PasswordHash: string(pwd), Nome: req.Nome, Cognome: req.Cognome, Ruolo: model.RoleRichiedente, Attivo: false, EmailVerificata: false})
 	if err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
-			writeErr(w, http.StatusConflict, "utente già esistente")
+			httpx.Error(w, http.StatusConflict, "utente già esistente")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 
 	verificationTokenRaw := make([]byte, 24)
 	if _, err := rand.Read(verificationTokenRaw); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	verificationToken := hex.EncodeToString(verificationTokenRaw)
@@ -535,7 +544,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	expiresAt := time.Now().UTC().Add(time.Duration(verifyTTLMinutes) * time.Minute)
 	if _, err := s.store.CreatePasswordResetToken(model.PasswordResetToken{Token: verificationToken, Purpose: "email_verification", UserID: u.ID, Email: u.Email, ExpiresAt: expiresAt}); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	verifyURL := buildActionURL(strings.TrimSpace(os.Getenv("FRONTEND_VERIFY_EMAIL_URL")), "/verify-email", verificationToken)
@@ -544,7 +553,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if err := s.sendEmail(u.Email, subject, textBody, htmlBody); err != nil {
 		s.recordSecurityEvent(model.SecurityEvent{Type: "EMAIL_DELIVERY_FAILED", Outcome: "registration_verification", Email: u.Email, UserID: u.ID, IP: clientIP(r)})
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_expires": expiresAt.Format(time.RFC3339)})
+	httpx.JSON(w, http.StatusCreated, map[string]any{"status": "pending_verification", "user": u, "verification_sent": true, "verification_expires": expiresAt.Format(time.RFC3339)})
 }
 
 func validateStrongPassword(password string) (bool, string) {
@@ -589,7 +598,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			IP:        ip,
 			UserAgent: ua,
 		})
-		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
+		httpx.Error(w, http.StatusUnauthorized, "credenziali non valide")
 		return
 	}
 	if locked, remaining := s.loginLT.IsLocked(email); locked {
@@ -603,7 +612,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 				"retry_after_seconds": int(remaining.Seconds()),
 			},
 		})
-		writeJSON(w, http.StatusTooManyRequests, map[string]any{
+		httpx.JSON(w, http.StatusTooManyRequests, map[string]any{
 			"error":               "troppi tentativi di login, riprova più tardi",
 			"retry_after_seconds": int(remaining.Seconds()),
 		})
@@ -623,7 +632,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 					"retry_after_seconds": int(remaining.Seconds()),
 				},
 			})
-			writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			httpx.JSON(w, http.StatusTooManyRequests, map[string]any{
 				"error":               "troppi tentativi di login, riprova più tardi",
 				"retry_after_seconds": int(remaining.Seconds()),
 			})
@@ -636,18 +645,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			IP:        ip,
 			UserAgent: ua,
 		})
-		writeErr(w, http.StatusUnauthorized, "credenziali non valide")
+		httpx.Error(w, http.StatusUnauthorized, "credenziali non valide")
 		return
 	}
 	if !u.Attivo || !u.EmailVerificata {
 		s.recordSecurityEvent(model.SecurityEvent{Type: "LOGIN_FAILED", Outcome: "account_not_verified", Email: email, UserID: u.ID, IP: ip, UserAgent: ua})
-		writeErr(w, http.StatusForbidden, "account non ancora verificato")
+		httpx.Error(w, http.StatusForbidden, "account non ancora verificato")
 		return
 	}
 	if isBackofficeRole(u.Ruolo) && u.TOTPEnabled {
 		if !auth.ValidateTOTP(req.OTP, u.TOTPSecret) {
 			s.recordSecurityEvent(model.SecurityEvent{Type: "LOGIN_FAILED", Outcome: "invalid_totp", Email: email, UserID: u.ID, IP: ip, UserAgent: ua})
-			writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+			httpx.Error(w, http.StatusUnauthorized, "codice 2fa non valido")
 			return
 		}
 	}
@@ -670,7 +679,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
 		Revoked:   false,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
+	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
 }
 
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
@@ -688,7 +697,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			IP:       clientIP(r),
 			Details:  map[string]any{"reason": "invalid_token"},
 		})
-		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
+		httpx.Error(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
 	if strings.TrimSpace(c.ID) == "" {
@@ -700,7 +709,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			IP:        clientIP(r),
 			Details:   map[string]any{"reason": "missing_session_id"},
 		})
-		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
+		httpx.Error(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
 	session, err := s.store.GetRefreshSessionByID(c.ID)
@@ -714,7 +723,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			IP:         clientIP(r),
 			Details:    map[string]any{"reason": "invalid_session"},
 		})
-		writeErr(w, http.StatusUnauthorized, "refresh token non valido")
+		httpx.Error(w, http.StatusUnauthorized, "refresh token non valido")
 		return
 	}
 	access, _ := s.tokens.SignAccess(c.UserID, c.Role)
@@ -739,7 +748,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			"new_refresh_session_id": newRefreshID,
 		},
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh})
+	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -760,7 +769,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "logged_out"})
 }
 
 func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
@@ -805,7 +814,7 @@ func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "accepted", "message": "se l'email esiste riceverai istruzioni"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "accepted", "message": "se l'email esiste riceverai istruzioni"})
 }
 
 func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
@@ -817,12 +826,12 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(strings.TrimSpace(req.NewPassword)) < 8 {
-		writeErr(w, http.StatusBadRequest, "password troppo corta")
+		httpx.Error(w, http.StatusBadRequest, "password troppo corta")
 		return
 	}
 	token := strings.TrimSpace(req.Token)
 	if token == "" {
-		writeErr(w, http.StatusBadRequest, "token non valido")
+		httpx.Error(w, http.StatusBadRequest, "token non valido")
 		return
 	}
 	resetRec, err := s.store.ConsumePasswordResetToken(token)
@@ -835,21 +844,21 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 				"reason": "invalid_or_expired_token",
 			},
 		})
-		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		httpx.Error(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
 	if !purposeMatches(resetRec.Purpose, "password_reset", "account_activation") {
-		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		httpx.Error(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
 	pwd, err := bcrypt.GenerateFromPassword([]byte(strings.TrimSpace(req.NewPassword)), 12)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	ok, err := s.store.UpdateUserPassword(resetRec.UserID, string(pwd))
 	if err != nil || !ok {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	if resetRec.Purpose == "account_activation" {
@@ -874,7 +883,7 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		ResourceID: resetRec.UserID,
 		IP:         clientIP(r),
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "reset_completed"})
 }
 
 func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
@@ -886,24 +895,24 @@ func (s *Server) handleVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	token := strings.TrimSpace(req.Token)
 	if token == "" {
-		writeErr(w, http.StatusBadRequest, "token non valido")
+		httpx.Error(w, http.StatusBadRequest, "token non valido")
 		return
 	}
 	verificationRec, err := s.store.ConsumePasswordResetToken(token)
 	if err != nil {
-		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		httpx.Error(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
 	if !purposeMatches(verificationRec.Purpose, "email_verification") {
-		writeErr(w, http.StatusUnauthorized, "token non valido o scaduto")
+		httpx.Error(w, http.StatusUnauthorized, "token non valido o scaduto")
 		return
 	}
 	if ok, _ := s.store.SetUserVerificationState(verificationRec.UserID, true, true); !ok {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	_, _ = s.store.AddAuditEvent(model.AuditEvent{ActorID: verificationRec.UserID, Action: "AUTH_EMAIL_VERIFIED", Resource: "user", ResourceID: verificationRec.UserID, Details: map[string]any{"email": verificationRec.Email}})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "verified"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "verified"})
 }
 
 func (s *Server) handleVerifyEmailLanding(w http.ResponseWriter, r *http.Request) {
@@ -918,34 +927,34 @@ func (s *Server) handleResetPasswordLanding(w http.ResponseWriter, r *http.Reque
 func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	u, err := s.store.GetUserByID(claims.UserID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	secret, uri, err := auth.GenerateTOTPSecret(u.Email, "Visto Easy")
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore setup 2fa")
+		httpx.Error(w, http.StatusInternalServerError, "errore setup 2fa")
 		return
 	}
 	ok, err := s.store.SetUserTOTPSecret(u.ID, secret)
 	if err != nil || !ok {
-		writeErr(w, http.StatusInternalServerError, "errore setup 2fa")
+		httpx.Error(w, http.StatusInternalServerError, "errore setup 2fa")
 		return
 	}
 	_, _ = s.store.SetUserTOTPEnabled(u.ID, false)
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_SETUP", Outcome: "pending_enable", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
 	s.recordAuditEvent(r, claims, "AUTH_2FA_SETUP", "user", u.ID, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "pending", "secret": secret, "provisioning_uri": uri})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "pending", "secret": secret, "provisioning_uri": uri})
 }
 
 func (s *Server) handle2FAEnable(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	var req struct {
@@ -956,32 +965,32 @@ func (s *Server) handle2FAEnable(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.store.GetUserByID(claims.UserID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	if strings.TrimSpace(u.TOTPSecret) == "" {
-		writeErr(w, http.StatusBadRequest, "setup 2fa non inizializzato")
+		httpx.Error(w, http.StatusBadRequest, "setup 2fa non inizializzato")
 		return
 	}
 	if !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
 		s.recordAuditEvent(r, claims, "AUTH_2FA_ENABLE_REJECTED", "user", u.ID, map[string]any{"reason": "invalid_code"})
-		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+		httpx.Error(w, http.StatusUnauthorized, "codice 2fa non valido")
 		return
 	}
 	ok, err := s.store.SetUserTOTPEnabled(u.ID, true)
 	if err != nil || !ok {
-		writeErr(w, http.StatusInternalServerError, "errore attivazione 2fa")
+		httpx.Error(w, http.StatusInternalServerError, "errore attivazione 2fa")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_ENABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
 	s.recordAuditEvent(r, claims, "AUTH_2FA_ENABLED", "user", u.ID, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "enabled"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "enabled"})
 }
 
 func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	var req struct {
@@ -992,22 +1001,22 @@ func (s *Server) handle2FADisable(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.store.GetUserByID(claims.UserID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	if u.TOTPEnabled && !auth.ValidateTOTP(req.Code, u.TOTPSecret) {
 		s.recordAuditEvent(r, claims, "AUTH_2FA_DISABLE_REJECTED", "user", u.ID, map[string]any{"reason": "invalid_code"})
-		writeErr(w, http.StatusUnauthorized, "codice 2fa non valido")
+		httpx.Error(w, http.StatusUnauthorized, "codice 2fa non valido")
 		return
 	}
 	if _, err := s.store.SetUserTOTPEnabled(u.ID, false); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore disattivazione 2fa")
+		httpx.Error(w, http.StatusInternalServerError, "errore disattivazione 2fa")
 		return
 	}
 	_, _ = s.store.SetUserTOTPSecret(u.ID, "")
 	s.recordSecurityEvent(model.SecurityEvent{Type: "TWO_FA_DISABLED", Outcome: "ok", UserID: u.ID, Email: u.Email, IP: clientIP(r)})
 	s.recordAuditEvent(r, claims, "AUTH_2FA_DISABLED", "user", u.ID, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "disabled"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "disabled"})
 }
 
 func isBackofficeRole(role model.Role) bool {
@@ -1017,7 +1026,7 @@ func isBackofficeRole(role model.Role) bool {
 func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleRichiedente) {
-		writeErr(w, http.StatusForbidden, "solo richiedente")
+		httpx.Error(w, http.StatusForbidden, "solo richiedente")
 		return
 	}
 	var req struct {
@@ -1031,49 +1040,49 @@ func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
 	}
 	p, err := s.store.CreatePratica(model.Pratica{UtenteID: claims.UserID, TipoVisto: req.TipoVisto, PaeseDest: req.PaeseDest, DatiAnagrafici: req.DatiAnagrafici, DatiPassaporto: req.DatiPassaporto}, claims.UserID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore creazione pratica")
+		httpx.Error(w, http.StatusInternalServerError, "errore creazione pratica")
 		return
 	}
 	go s.notifyBackofficePraticaCreated(p)
-	writeJSON(w, http.StatusCreated, p)
+	httpx.JSON(w, http.StatusCreated, p)
 }
 
 func (s *Server) handleListMiePratiche(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	if claims.Role == string(model.RoleRichiedente) {
-		writeJSON(w, http.StatusOK, s.store.ListPraticheByUser(claims.UserID))
+		httpx.JSON(w, http.StatusOK, s.store.ListPraticheByUser(claims.UserID))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.store.ListAllPratiche())
+	httpx.JSON(w, http.StatusOK, s.store.ListAllPratiche())
 }
 
 func (s *Server) handleGetPratica(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	if claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleRichiedente) {
-		writeErr(w, http.StatusForbidden, "solo richiedente")
+		httpx.Error(w, http.StatusForbidden, "solo richiedente")
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -1084,27 +1093,27 @@ func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.UpdatePraticaAsDraft(id, claims.UserID, data)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusForbidden, "modifica non consentita")
+		httpx.Error(w, http.StatusForbidden, "modifica non consentita")
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleDeletePratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleRichiedente) {
-		writeErr(w, http.StatusForbidden, "solo richiedente")
+		httpx.Error(w, http.StatusForbidden, "solo richiedente")
 		return
 	}
 	if err := s.store.DeletePraticaAsDraft(chi.URLParam(r, "id"), claims.UserID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusForbidden, "eliminazione non consentita")
+		httpx.Error(w, http.StatusForbidden, "eliminazione non consentita")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1113,19 +1122,19 @@ func (s *Server) handleDeletePratica(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSubmitPratica(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleRichiedente) {
-		writeErr(w, http.StatusForbidden, "solo richiedente")
+		httpx.Error(w, http.StatusForbidden, "solo richiedente")
 		return
 	}
 	p, err := s.store.SubmitPratica(chi.URLParam(r, "id"), claims.UserID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusForbidden, "submit non consentito")
+		httpx.Error(w, http.StatusForbidden, "submit non consentito")
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1133,11 +1142,11 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 	var req struct {
@@ -1150,15 +1159,15 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Dimensione > 10*1024*1024 {
-		writeErr(w, http.StatusBadRequest, "file troppo grande")
+		httpx.Error(w, http.StatusBadRequest, "file troppo grande")
 		return
 	}
 	doc, err := s.store.AddDocumento(id, model.Documento{Tipo: req.Tipo, NomeFile: req.NomeFile, MimeType: strings.ToLower(req.MimeType), Dimensione: req.Dimensione})
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore upload")
+		httpx.Error(w, http.StatusInternalServerError, "errore upload")
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"documento": doc, "upload_url": "https://storage.example/upload/" + doc.ID})
+	httpx.JSON(w, http.StatusCreated, map[string]any{"documento": doc, "upload_url": "https://storage.example/upload/" + doc.ID})
 }
 
 func (s *Server) handlePresignDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1166,11 +1175,11 @@ func (s *Server) handlePresignDocumento(w http.ResponseWriter, r *http.Request) 
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 
@@ -1183,21 +1192,21 @@ func (s *Server) handlePresignDocumento(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if req.NomeFile == "" || !isAllowedMime(req.MimeType) {
-		writeErr(w, http.StatusBadRequest, "file non valido")
+		httpx.Error(w, http.StatusBadRequest, "file non valido")
 		return
 	}
 	if req.Dimensione <= 0 || req.Dimensione > 10*1024*1024 {
-		writeErr(w, http.StatusBadRequest, "dimensione file non valida")
+		httpx.Error(w, http.StatusBadRequest, "dimensione file non valida")
 		return
 	}
 
 	session, err := s.presign.PresignDocumentUpload(id, req.NomeFile, req.MimeType, req.Dimensione)
 	if err != nil {
-		writeErr(w, http.StatusServiceUnavailable, "storage non configurato")
+		httpx.Error(w, http.StatusServiceUnavailable, "storage non configurato")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"upload": session,
 	})
 }
@@ -1207,19 +1216,19 @@ func (s *Server) handleListDocumenti(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 	docs, err := s.store.ListDocumenti(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
-	writeJSON(w, http.StatusOK, docs)
+	httpx.JSON(w, http.StatusOK, docs)
 }
 
 func (s *Server) handleGetDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1228,19 +1237,19 @@ func (s *Server) handleGetDocumento(w http.ResponseWriter, r *http.Request) {
 	docID := chi.URLParam(r, "docId")
 	p, err := s.store.GetPratica(praticaID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 	d, err := s.store.GetDocumento(praticaID, docID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "documento non trovato")
+		httpx.Error(w, http.StatusNotFound, "documento non trovato")
 		return
 	}
-	writeJSON(w, http.StatusOK, d)
+	httpx.JSON(w, http.StatusOK, d)
 }
 
 func (s *Server) handleDownloadDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1249,16 +1258,16 @@ func (s *Server) handleDownloadDocumento(w http.ResponseWriter, r *http.Request)
 	docID := chi.URLParam(r, "docId")
 	p, err := s.store.GetPratica(praticaID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 	d, err := s.store.GetDocumento(praticaID, docID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "documento non trovato")
+		httpx.Error(w, http.StatusNotFound, "documento non trovato")
 		return
 	}
 
@@ -1270,7 +1279,7 @@ func (s *Server) handleDownloadDocumento(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	writeErr(w, http.StatusServiceUnavailable, "download non disponibile: storage non configurato")
+	httpx.Error(w, http.StatusServiceUnavailable, "download non disponibile: storage non configurato")
 }
 
 func (s *Server) handlePreviewDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1279,16 +1288,16 @@ func (s *Server) handlePreviewDocumento(w http.ResponseWriter, r *http.Request) 
 	docID := chi.URLParam(r, "docId")
 	p, err := s.store.GetPratica(praticaID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil || (claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID) {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
 	d, err := s.store.GetDocumento(praticaID, docID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "documento non trovato")
+		httpx.Error(w, http.StatusNotFound, "documento non trovato")
 		return
 	}
 
@@ -1300,7 +1309,7 @@ func (s *Server) handlePreviewDocumento(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	writeErr(w, http.StatusServiceUnavailable, "anteprima non disponibile: storage non configurato")
+	httpx.Error(w, http.StatusServiceUnavailable, "anteprima non disponibile: storage non configurato")
 }
 
 func (s *Server) handleDeleteDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1309,31 +1318,31 @@ func (s *Server) handleDeleteDocumento(w http.ResponseWriter, r *http.Request) {
 	docID := chi.URLParam(r, "docId")
 	p, err := s.store.GetPratica(praticaID)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	if claims.Role == string(model.RoleRichiedente) {
 		if p.UtenteID != claims.UserID {
-			writeErr(w, http.StatusForbidden, "accesso negato")
+			httpx.Error(w, http.StatusForbidden, "accesso negato")
 			return
 		}
 		if p.Stato != model.StatoBozza {
-			writeErr(w, http.StatusForbidden, "eliminazione documenti consentita solo in bozza")
+			httpx.Error(w, http.StatusForbidden, "eliminazione documenti consentita solo in bozza")
 			return
 		}
 	}
 
 	deleted, err := s.store.DeleteDocumento(praticaID, docID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore eliminazione documento")
+		httpx.Error(w, http.StatusInternalServerError, "errore eliminazione documento")
 		return
 	}
 	if !deleted {
-		writeErr(w, http.StatusNotFound, "documento non trovato")
+		httpx.Error(w, http.StatusNotFound, "documento non trovato")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1344,18 +1353,18 @@ func (s *Server) handleListEventiPratica(w http.ResponseWriter, r *http.Request)
 	id := chi.URLParam(r, "id")
 	p, err := s.store.GetPratica(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	if claims.Role == string(model.RoleRichiedente) && p.UtenteID != claims.UserID {
-		writeErr(w, http.StatusForbidden, "accesso negato")
+		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": p.Eventi, "count": len(p.Eventi)})
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": p.Eventi, "count": len(p.Eventi)})
 }
 
 func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Request) {
@@ -1371,78 +1380,78 @@ func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Re
 	}
 	pay, err := s.store.CreatePayment(req.PraticaID, req.Provider, req.Importo)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	pay, err = s.enrichPaymentCheckoutSession(pay)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
+		httpx.Error(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
 		return
 	}
 	_, _ = s.store.ChangePraticaState(req.PraticaID, claimsFromCtx(r.Context()).UserID, model.StatoAttendePagamento, "link pagamento generato")
 	s.notifyPaymentLink(pay)
-	writeJSON(w, http.StatusCreated, pay)
+	httpx.JSON(w, http.StatusCreated, pay)
 }
 
 func (s *Server) handleGetPagamento(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	pay, err := s.store.GetPaymentByToken(token)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		httpx.Error(w, http.StatusNotFound, "pagamento non trovato")
 		return
 	}
-	writeJSON(w, http.StatusOK, pay)
+	httpx.JSON(w, http.StatusOK, pay)
 }
 
 func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MiB
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "payload non valido")
+		httpx.Error(w, http.StatusBadRequest, "payload non valido")
 		return
 	}
 	secret := strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET"))
 	if secret != "" {
 		sig := strings.TrimSpace(r.Header.Get("Stripe-Signature"))
 		if !verifyStripeSignature(secret, body, sig) {
-			writeErr(w, http.StatusUnauthorized, "firma webhook non valida")
+			httpx.Error(w, http.StatusUnauthorized, "firma webhook non valida")
 			return
 		}
 	}
 
 	info, err := parseWebhookPaymentInfo(body)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "payload non valido")
+		httpx.Error(w, http.StatusBadRequest, "payload non valido")
 		return
 	}
 	if strings.ToLower(info.Event) != "payment.succeeded" {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ignored"})
+		httpx.JSON(w, http.StatusOK, map[string]any{"status": "ignored"})
 		return
 	}
 	if strings.TrimSpace(info.Token) == "" {
-		writeErr(w, http.StatusBadRequest, "token pagamento mancante")
+		httpx.Error(w, http.StatusBadRequest, "token pagamento mancante")
 		return
 	}
 
 	existingPay, err := s.store.GetPaymentByToken(info.Token)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		httpx.Error(w, http.StatusNotFound, "pagamento non trovato")
 		return
 	}
 
 	alreadyProcessed, err := s.store.MarkWebhookEventProcessed("stripe", info.EventID, existingPay.ID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore deduplicazione webhook")
+		httpx.Error(w, http.StatusInternalServerError, "errore deduplicazione webhook")
 		return
 	}
 	if alreadyProcessed {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "duplicate_ignored", "event_id": info.EventID})
+		httpx.JSON(w, http.StatusOK, map[string]any{"status": "duplicate_ignored", "event_id": info.EventID})
 		return
 	}
 
 	pay, err := s.store.ConfirmPaymentByToken(info.Token)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pagamento non trovato")
+		httpx.Error(w, http.StatusNotFound, "pagamento non trovato")
 		return
 	}
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoPagamentoRicevuto, "webhook provider")
@@ -1450,7 +1459,7 @@ func (s *Server) handlePagamentoWebhook(w http.ResponseWriter, r *http.Request) 
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoVistoEmesso, "visto emesso")
 	_, _ = s.store.ChangePraticaState(pay.PraticaID, "system", model.StatoCompletata, "visto consegnato")
 	s.notifyPagamentoCompletato(pay)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "processed", "event_id": info.EventID})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "processed", "event_id": info.EventID})
 }
 
 func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
@@ -1485,7 +1494,7 @@ func (s *Server) handleBOListPratiche(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items":     paged,
 		"count":     len(paged),
 		"total":     total,
@@ -1617,7 +1626,7 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 	start, end := paginateBounds(total, page, pageSize)
 	paged := items[start:end]
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items":     paged,
 		"count":     len(paged),
 		"total":     total,
@@ -1629,11 +1638,11 @@ func (s *Server) handleBOListUtenti(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil {
-		writeErr(w, http.StatusUnauthorized, "non autenticato")
+		httpx.Error(w, http.StatusUnauthorized, "non autenticato")
 		return
 	}
 	if claims.Role != string(model.RoleAdmin) && claims.Role != string(model.RoleSupervisore) {
-		writeErr(w, http.StatusForbidden, "solo admin o supervisore")
+		httpx.Error(w, http.StatusForbidden, "solo admin o supervisore")
 		return
 	}
 
@@ -1650,23 +1659,23 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 	nome := strings.TrimSpace(req.Nome)
 	cognome := strings.TrimSpace(req.Cognome)
 	if email == "" || !strings.Contains(email, "@") {
-		writeErr(w, http.StatusBadRequest, "email non valida")
+		httpx.Error(w, http.StatusBadRequest, "email non valida")
 		return
 	}
 	if nome == "" || cognome == "" {
-		writeErr(w, http.StatusBadRequest, "nome e cognome obbligatori")
+		httpx.Error(w, http.StatusBadRequest, "nome e cognome obbligatori")
 		return
 	}
 
 	buf := make([]byte, 18)
 	if _, err := rand.Read(buf); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	tempPassword := hex.EncodeToString(buf)
 	hash, err := bcrypt.GenerateFromPassword([]byte(tempPassword), 12)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 
@@ -1681,16 +1690,16 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrAlreadyExists) {
-			writeErr(w, http.StatusConflict, "operatore gia esistente")
+			httpx.Error(w, http.StatusConflict, "operatore gia esistente")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 
 	resetTokenRaw := make([]byte, 24)
 	if _, err := rand.Read(resetTokenRaw); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 	inviteToken := hex.EncodeToString(resetTokenRaw)
@@ -1702,7 +1711,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 		Email:     email,
 		ExpiresAt: expiresAt,
 	}); err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore interno")
+		httpx.Error(w, http.StatusInternalServerError, "errore interno")
 		return
 	}
 
@@ -1714,7 +1723,7 @@ func (s *Server) handleBOInviteOperatore(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.recordAuditEvent(r, claims, "BO_OPERATOR_INVITED", "user", u.ID, map[string]any{"email": email})
-	writeJSON(w, http.StatusCreated, map[string]any{
+	httpx.JSON(w, http.StatusCreated, map[string]any{
 		"status":       "invited",
 		"invited_user": u,
 		"invite_url":   inviteURL,
@@ -1848,70 +1857,70 @@ func purposeMatches(actual string, expected ...string) bool {
 func (s *Server) handleBOListUserSessions(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleAdmin) {
-		writeErr(w, http.StatusForbidden, "solo admin")
+		httpx.Error(w, http.StatusForbidden, "solo admin")
 		return
 	}
 	userID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if userID == "" {
-		writeErr(w, http.StatusBadRequest, "utente non valido")
+		httpx.Error(w, http.StatusBadRequest, "utente non valido")
 		return
 	}
 	if _, err := s.store.GetUserByID(userID); err != nil {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	items := s.store.ListRefreshSessionsByUser(userID)
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": items, "count": len(items)})
 }
 
 func (s *Server) handleBORevokeUserSessions(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleAdmin) {
-		writeErr(w, http.StatusForbidden, "solo admin")
+		httpx.Error(w, http.StatusForbidden, "solo admin")
 		return
 	}
 	userID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if userID == "" {
-		writeErr(w, http.StatusBadRequest, "utente non valido")
+		httpx.Error(w, http.StatusBadRequest, "utente non valido")
 		return
 	}
 	if _, err := s.store.GetUserByID(userID); err != nil {
-		writeErr(w, http.StatusNotFound, "utente non trovato")
+		httpx.Error(w, http.StatusNotFound, "utente non trovato")
 		return
 	}
 	revoked, err := s.store.RevokeAllRefreshSessionsByUser(userID)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore revoca sessioni")
+		httpx.Error(w, http.StatusInternalServerError, "errore revoca sessioni")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSIONS_REVOKED", Outcome: "bulk", UserID: claims.UserID, Metadata: map[string]any{"target_user_id": userID, "revoked": revoked}})
 	s.recordAuditEvent(r, claims, "ADMIN_REVOKE_USER_SESSIONS", "refresh_session", userID, map[string]any{"revoked": revoked})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "user_id": userID, "revoked": revoked})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "revoked", "user_id": userID, "revoked": revoked})
 }
 
 func (s *Server) handleBORevokeSession(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	if claims == nil || claims.Role != string(model.RoleAdmin) {
-		writeErr(w, http.StatusForbidden, "solo admin")
+		httpx.Error(w, http.StatusForbidden, "solo admin")
 		return
 	}
 	sessionID := strings.TrimSpace(chi.URLParam(r, "id"))
 	if sessionID == "" {
-		writeErr(w, http.StatusBadRequest, "sessione non valida")
+		httpx.Error(w, http.StatusBadRequest, "sessione non valida")
 		return
 	}
 	ok, err := s.store.RevokeRefreshSession(sessionID, "admin_manual_revoke")
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore revoca sessione")
+		httpx.Error(w, http.StatusInternalServerError, "errore revoca sessione")
 		return
 	}
 	if !ok {
-		writeErr(w, http.StatusNotFound, "sessione non trovata o già revocata")
+		httpx.Error(w, http.StatusNotFound, "sessione non trovata o già revocata")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{Type: "ADMIN_SESSION_REVOKED", Outcome: "single", UserID: claims.UserID, Metadata: map[string]any{"session_id": sessionID}})
 	s.recordAuditEvent(r, claims, "ADMIN_REVOKE_SESSION", "refresh_session", sessionID, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "session_id": sessionID})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "revoked", "session_id": sessionID})
 }
 
 func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) {
@@ -1921,7 +1930,7 @@ func (s *Server) handleBOSecurityEvents(w http.ResponseWriter, r *http.Request) 
 	start, end := paginateBounds(total, page, pageSize)
 	paged := filtered[start:end]
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items":     paged,
 		"count":     len(paged),
 		"total":     total,
@@ -1937,7 +1946,7 @@ func (s *Server) handleBOAuditEvents(w http.ResponseWriter, r *http.Request) {
 	start, end := paginateBounds(total, page, pageSize)
 	paged := filtered[start:end]
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items":     paged,
 		"count":     len(paged),
 		"total":     total,
@@ -1949,15 +1958,15 @@ func (s *Server) handleBOAuditEvents(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBOGetAuditEvent(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
-		writeErr(w, http.StatusBadRequest, "id evento non valido")
+		httpx.Error(w, http.StatusBadRequest, "id evento non valido")
 		return
 	}
 	evt, err := s.store.GetAuditEventByID(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "evento audit non trovato")
+		httpx.Error(w, http.StatusNotFound, "evento audit non trovato")
 		return
 	}
-	writeJSON(w, http.StatusOK, evt)
+	httpx.JSON(w, http.StatusOK, evt)
 }
 
 func (s *Server) handleBOAuditEventsCSV(w http.ResponseWriter, r *http.Request) {
@@ -2016,7 +2025,7 @@ func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"total":                len(items),
 		"window_minutes":       windowMinutes,
 		"recent_failed_logins": recentFailed,
@@ -2031,7 +2040,7 @@ func (s *Server) handleBOSecurityEventsStats(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleBOListBlockedIPs(w http.ResponseWriter, _ *http.Request) {
 	items := s.store.ListBlockedIPs()
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items": items,
 		"count": len(items),
 	})
@@ -2044,12 +2053,12 @@ func (s *Server) handleBOEvaluateIP(w http.ResponseWriter, r *http.Request) {
 	}
 	ip, err := normalizeIPAddress(input)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "ip non valido")
+		httpx.Error(w, http.StatusBadRequest, "ip non valido")
 		return
 	}
 
 	decision := s.evaluateClientIPPolicy(ip)
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"ip":       ip,
 		"decision": decision,
 	})
@@ -2057,7 +2066,7 @@ func (s *Server) handleBOEvaluateIP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBOListAllowedIPs(w http.ResponseWriter, _ *http.Request) {
 	items := s.store.ListAllowedIPs()
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"items": items,
 		"count": len(items),
 	})
@@ -2075,7 +2084,7 @@ func (s *Server) handleBOAllowIP(w http.ResponseWriter, r *http.Request) {
 	}
 	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		httpx.Error(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
 	reason := strings.TrimSpace(req.Reason)
@@ -2099,7 +2108,7 @@ func (s *Server) handleBOAllowIP(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, err = s.store.UpsertAllowedIP(entry)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore salvataggio allowlist")
+		httpx.Error(w, http.StatusInternalServerError, "errore salvataggio allowlist")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{
@@ -2112,7 +2121,7 @@ func (s *Server) handleBOAllowIP(w http.ResponseWriter, r *http.Request) {
 			"ttl_minutes": ttlMinutes,
 		},
 	})
-	writeJSON(w, http.StatusOK, entry)
+	httpx.JSON(w, http.StatusOK, entry)
 }
 
 func (s *Server) handleBORevokeAllowedIP(w http.ResponseWriter, r *http.Request) {
@@ -2125,16 +2134,16 @@ func (s *Server) handleBORevokeAllowedIP(w http.ResponseWriter, r *http.Request)
 	}
 	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		httpx.Error(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
 	removed, err := s.store.RemoveAllowedIP(target)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
+		httpx.Error(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
 		return
 	}
 	if !removed {
-		writeErr(w, http.StatusNotFound, "target non presente in allowlist")
+		httpx.Error(w, http.StatusNotFound, "target non presente in allowlist")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{
@@ -2143,7 +2152,7 @@ func (s *Server) handleBORevokeAllowedIP(w http.ResponseWriter, r *http.Request)
 		UserID:  claims.UserID,
 		IP:      target,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "revoked", "ip": target})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "revoked", "ip": target})
 }
 
 func (s *Server) handleBORevokeAllowedIPBulk(w http.ResponseWriter, r *http.Request) {
@@ -2176,7 +2185,7 @@ func (s *Server) handleBORevokeAllowedIPBulk(w http.ResponseWriter, r *http.Requ
 		}
 		ok, err := s.store.RemoveAllowedIP(target)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
+			httpx.Error(w, http.StatusInternalServerError, "errore aggiornamento allowlist")
 			return
 		}
 		if ok {
@@ -2192,7 +2201,7 @@ func (s *Server) handleBORevokeAllowedIPBulk(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"removed":   removed,
 		"not_found": notFound,
 		"invalid":   invalid,
@@ -2216,7 +2225,7 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	}
 	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		httpx.Error(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
 	reason := strings.TrimSpace(req.Reason)
@@ -2240,7 +2249,7 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 	}
 	entry, err = s.store.UpsertBlockedIP(entry)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore salvataggio denylist")
+		httpx.Error(w, http.StatusInternalServerError, "errore salvataggio denylist")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{
@@ -2253,7 +2262,7 @@ func (s *Server) handleBOBlockIP(w http.ResponseWriter, r *http.Request) {
 			"ttl_minutes": ttlMinutes,
 		},
 	})
-	writeJSON(w, http.StatusOK, entry)
+	httpx.JSON(w, http.StatusOK, entry)
 }
 
 func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
@@ -2266,16 +2275,16 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 	}
 	target, err := normalizeBlockTarget(req.IP)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
+		httpx.Error(w, http.StatusBadRequest, "target non valido (usa IP o CIDR)")
 		return
 	}
 	removed, err := s.store.RemoveBlockedIP(target)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "errore aggiornamento denylist")
+		httpx.Error(w, http.StatusInternalServerError, "errore aggiornamento denylist")
 		return
 	}
 	if !removed {
-		writeErr(w, http.StatusNotFound, "ip non presente in denylist")
+		httpx.Error(w, http.StatusNotFound, "ip non presente in denylist")
 		return
 	}
 	s.recordSecurityEvent(model.SecurityEvent{
@@ -2284,7 +2293,7 @@ func (s *Server) handleBOUnblockIP(w http.ResponseWriter, r *http.Request) {
 		UserID:  claims.UserID,
 		IP:      target,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{"status": "unblocked", "ip": target})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "unblocked", "ip": target})
 }
 
 func (s *Server) handleBOUnblockIPBulk(w http.ResponseWriter, r *http.Request) {
@@ -2317,7 +2326,7 @@ func (s *Server) handleBOUnblockIPBulk(w http.ResponseWriter, r *http.Request) {
 		}
 		ok, err := s.store.RemoveBlockedIP(target)
 		if err != nil {
-			writeErr(w, http.StatusInternalServerError, "errore aggiornamento denylist")
+			httpx.Error(w, http.StatusInternalServerError, "errore aggiornamento denylist")
 			return
 		}
 		if ok {
@@ -2333,7 +2342,7 @@ func (s *Server) handleBOUnblockIPBulk(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	httpx.JSON(w, http.StatusOK, map[string]any{
 		"removed":   removed,
 		"not_found": notFound,
 		"invalid":   invalid,
@@ -2348,15 +2357,15 @@ func (s *Server) handleBOUnblockIPBulk(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBOGetSecurityEvent(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(chi.URLParam(r, "id"))
 	if id == "" {
-		writeErr(w, http.StatusBadRequest, "id evento non valido")
+		httpx.Error(w, http.StatusBadRequest, "id evento non valido")
 		return
 	}
 	evt, err := s.store.GetSecurityEventByID(id)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "evento sicurezza non trovato")
+		httpx.Error(w, http.StatusNotFound, "evento sicurezza non trovato")
 		return
 	}
-	writeJSON(w, http.StatusOK, evt)
+	httpx.JSON(w, http.StatusOK, evt)
 }
 
 func (s *Server) handleBOSecurityEventsCSV(w http.ResponseWriter, r *http.Request) {
@@ -2383,7 +2392,7 @@ func (s *Server) handleBOSecurityEventsCSV(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleBOSecurityAlertsStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeErr(w, http.StatusInternalServerError, "stream non supportato")
+		httpx.Error(w, http.StatusInternalServerError, "stream non supportato")
 		return
 	}
 
@@ -2614,7 +2623,7 @@ func (s *Server) handleBOReportCSV(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleBONotificationsStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeErr(w, http.StatusInternalServerError, "stream non supportato")
+		httpx.Error(w, http.StatusInternalServerError, "stream non supportato")
 		return
 	}
 
@@ -2829,14 +2838,14 @@ func (s *Server) handleBOChangeStato(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.ChangePraticaState(praticaID, claims.UserID, req.Stato, req.Nota)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, "transizione non valida")
+		httpx.Error(w, http.StatusBadRequest, "transizione non valida")
 		return
 	}
 	s.recordAuditEvent(r, claims, "PRATICA_CHANGE_STATE", "pratica", praticaID, map[string]any{"new_state": req.Stato, "note": req.Nota})
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
@@ -2852,14 +2861,14 @@ func (s *Server) handleBOAssegna(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.AssignOperatore(praticaID, operatorID, claims.UserID)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica o operatore non trovato")
+			httpx.Error(w, http.StatusNotFound, "pratica o operatore non trovato")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, "assegnazione non valida")
+		httpx.Error(w, http.StatusBadRequest, "assegnazione non valida")
 		return
 	}
 	s.recordAuditEvent(r, claims, "PRATICA_ASSIGN_OPERATOR", "pratica", praticaID, map[string]any{"operatore_id": operatorID})
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleBOAddNota(w http.ResponseWriter, r *http.Request) {
@@ -2874,14 +2883,14 @@ func (s *Server) handleBOAddNota(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.AddNota(chi.URLParam(r, "id"), claims.UserID, req.Messaggio, req.Interna)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, "nota non valida")
+		httpx.Error(w, http.StatusBadRequest, "nota non valida")
 		return
 	}
 	s.recordAuditEvent(r, claims, "PRATICA_ADD_NOTE", "pratica", chi.URLParam(r, "id"), map[string]any{"interna": req.Interna})
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
@@ -2896,14 +2905,14 @@ func (s *Server) handleBORichiediDoc(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.RequestDocumento(chi.URLParam(r, "id"), claims.UserID, req.Documento, req.Nota)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pratica non trovata")
+			httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 			return
 		}
-		writeErr(w, http.StatusBadRequest, "richiesta documento non valida")
+		httpx.Error(w, http.StatusBadRequest, "richiesta documento non valida")
 		return
 	}
 	s.recordAuditEvent(r, claims, "PRATICA_REQUEST_DOCUMENT", "pratica", chi.URLParam(r, "id"), map[string]any{"documento": req.Documento})
-	writeJSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, p)
 }
 
 func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Request) {
@@ -2921,25 +2930,25 @@ func (s *Server) handleBOCreateLinkPagamento(w http.ResponseWriter, r *http.Requ
 	praticaID := chi.URLParam(r, "id")
 	pay, err := s.store.CreatePayment(praticaID, req.Provider, req.Importo)
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	pay, err = s.enrichPaymentCheckoutSession(pay)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
+		httpx.Error(w, http.StatusBadGateway, "errore creazione sessione pagamento provider")
 		return
 	}
 	_, _ = s.store.ChangePraticaState(praticaID, claims.UserID, model.StatoAttendePagamento, "link pagamento generato")
 	s.notifyPaymentLink(pay)
 	s.recordAuditEvent(r, claims, "PRATICA_CREATE_PAYMENT_LINK", "pratica", praticaID, map[string]any{"payment_token": pay.Token, "provider": pay.Provider, "amount": pay.Importo})
-	writeJSON(w, http.StatusCreated, pay)
+	httpx.JSON(w, http.StatusCreated, pay)
 }
 
 func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request) {
 	claims := claimsFromCtx(r.Context())
 	token := strings.TrimSpace(chi.URLParam(r, "token"))
 	if token == "" {
-		writeErr(w, http.StatusBadRequest, "token pagamento non valido")
+		httpx.Error(w, http.StatusBadRequest, "token pagamento non valido")
 		return
 	}
 	var req struct {
@@ -2955,14 +2964,14 @@ func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request)
 	pay, err := s.store.RefundPaymentByToken(token)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			writeErr(w, http.StatusNotFound, "pagamento non trovato")
+			httpx.Error(w, http.StatusNotFound, "pagamento non trovato")
 			return
 		}
 		if errors.Is(err, store.ErrInvalidState) {
-			writeErr(w, http.StatusConflict, "rimborso non consentito nello stato corrente")
+			httpx.Error(w, http.StatusConflict, "rimborso non consentito nello stato corrente")
 			return
 		}
-		writeErr(w, http.StatusInternalServerError, "errore rimborso")
+		httpx.Error(w, http.StatusInternalServerError, "errore rimborso")
 		return
 	}
 
@@ -2985,7 +2994,7 @@ func (s *Server) handleBORefundPagamento(w http.ResponseWriter, r *http.Request)
 	})
 	s.recordAuditEvent(r, claims, "PAYMENT_REFUND", "payment", token, map[string]any{"pratica_id": pay.PraticaID, "provider": pay.Provider, "amount": req.Amount, "reason": reason, "outcome": outcome})
 
-	writeJSON(w, http.StatusOK, map[string]any{"status": "refunded", "payment": pay})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "refunded", "payment": pay})
 }
 
 func (s *Server) handleBOInviaVisto(w http.ResponseWriter, r *http.Request) {
@@ -2994,15 +3003,15 @@ func (s *Server) handleBOInviaVisto(w http.ResponseWriter, r *http.Request) {
 	_, err := s.store.ChangePraticaState(id, claims.UserID, model.StatoVistoEmesso, "invio manuale visto")
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidState) {
-			writeErr(w, http.StatusBadRequest, "stato non compatibile per invio visto")
+			httpx.Error(w, http.StatusBadRequest, "stato non compatibile per invio visto")
 			return
 		}
-		writeErr(w, http.StatusNotFound, "pratica non trovata")
+		httpx.Error(w, http.StatusNotFound, "pratica non trovata")
 		return
 	}
 	_, _ = s.store.ChangePraticaState(id, claims.UserID, model.StatoCompletata, "pratica completata")
 	s.recordAuditEvent(r, claims, "PRATICA_SEND_VISTO", "pratica", id, nil)
-	writeJSON(w, http.StatusOK, map[string]any{"status": "visto inviato"})
+	httpx.JSON(w, http.StatusOK, map[string]any{"status": "visto inviato"})
 }
 
 func (s *Server) handleBOStats(w http.ResponseWriter, _ *http.Request) {
@@ -3011,22 +3020,14 @@ func (s *Server) handleBOStats(w http.ResponseWriter, _ *http.Request) {
 	for _, p := range all {
 		stats[p.Stato]++
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"totale_pratiche": len(all), "by_stato": stats})
+	httpx.JSON(w, http.StatusOK, map[string]any{"totale_pratiche": len(all), "by_stato": stats})
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
 
-func writeErr(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]any{"error": msg})
-}
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
-		writeErr(w, http.StatusBadRequest, "payload non valido")
+	if err := httpx.Decode(w, r, dst, httpx.DecodeOptions{AllowUnknownFields: true, MaxBytes: 2 << 20}); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "payload non valido")
 		return false
 	}
 	return true
@@ -3082,7 +3083,7 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 						"policy_rule": decision.Reason,
 					},
 				})
-				writeJSON(w, http.StatusForbidden, map[string]any{"error": "ip bloccato"})
+				httpx.JSON(w, http.StatusForbidden, map[string]any{"error": "ip bloccato"})
 				return
 			}
 			allowed, retryAfter := s.authRL.Allow(key)
@@ -3097,7 +3098,7 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 						"retry_after_seconds": int(retryAfter.Seconds()),
 					},
 				})
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				httpx.JSON(w, http.StatusTooManyRequests, map[string]any{
 					"error":               "troppi tentativi, riprova più tardi",
 					"retry_after_seconds": int(retryAfter.Seconds()),
 				})
@@ -3108,25 +3109,6 @@ func (s *Server) authRateLimitMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-func clientIP(r *http.Request) string {
-	xForwardedFor := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if xForwardedFor != "" {
-		parts := strings.Split(xForwardedFor, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	xRealIP := strings.TrimSpace(r.Header.Get("X-Real-IP"))
-	if xRealIP != "" {
-		return xRealIP
-	}
-	remote := strings.TrimSpace(r.RemoteAddr)
-	host, _, err := net.SplitHostPort(remote)
-	if err == nil && strings.TrimSpace(host) != "" {
-		return strings.TrimSpace(host)
-	}
-	return remote
-}
 
 func normalizeIPAddress(raw string) (string, error) {
 	v := strings.TrimSpace(raw)
@@ -3530,17 +3512,6 @@ func paginateBounds(total, page, pageSize int) (int, int) {
 	return start, end
 }
 
-func envInt(name string, fallback int) int {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return fallback
-	}
-	v, err := strconv.Atoi(raw)
-	if err != nil {
-		return fallback
-	}
-	return v
-}
 
 func formatOptTime(t *time.Time) string {
 	if t == nil {
@@ -3549,47 +3520,9 @@ func formatOptTime(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-type simpleRateLimiter struct {
-	mu        sync.Mutex
-	limit     int
-	window    time.Duration
-	bucketByK map[string]rateBucket
-}
 
-type rateBucket struct {
-	count   int
-	resetAt time.Time
-}
 
-func newSimpleRateLimiter(limit int, window time.Duration) *simpleRateLimiter {
-	return &simpleRateLimiter{
-		limit:     limit,
-		window:    window,
-		bucketByK: map[string]rateBucket{},
-	}
-}
 
-func (l *simpleRateLimiter) Allow(key string) (bool, time.Duration) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	now := time.Now()
-	b := l.bucketByK[key]
-	if b.resetAt.IsZero() || now.After(b.resetAt) {
-		b = rateBucket{count: 0, resetAt: now.Add(l.window)}
-	}
-	if b.count >= l.limit {
-		retry := time.Until(b.resetAt)
-		if retry < 0 {
-			retry = 0
-		}
-		l.bucketByK[key] = b
-		return false, retry
-	}
-	b.count++
-	l.bucketByK[key] = b
-	return true, 0
-}
 
 type loginLockTracker struct {
 	mu          sync.Mutex
@@ -3657,4 +3590,15 @@ func (t *loginLockTracker) Clear(email string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	delete(t.entries, email)
+}
+
+// clientIP restituisce l'IP del client: CF-Connecting-IP, poi l'ultimo valore
+// di X-Forwarded-For (quello aggiunto dal proxy, non falsificabile dal client).
+func clientIP(r *http.Request) string { return httpx.ClientIP(r, true) }
+
+func envInt(name string, fallback int) int { return envx.Int(name, fallback) }
+
+// newRateLimiter crea il limitatore per IP degli endpoint di autenticazione.
+func newRateLimiter(limit int, window time.Duration) *mw.Limiter {
+	return mw.NewLimiter(mw.RateLimitOptions{Requests: limit, Window: window})
 }

@@ -26,7 +26,7 @@ func newSecurityHTTPTestServer(t *testing.T) (*Server, *fakePolicyStore, string)
 	s := &Server{
 		store:   st,
 		tokens:  tm,
-		authRL:  newSimpleRateLimiter(1000, time.Minute),
+		authRL:  newRateLimiter(1000, time.Minute),
 		loginLT: newLoginLockTracker(10, 15*time.Minute),
 	}
 	return s, st, tok
