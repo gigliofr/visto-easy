@@ -1,0 +1,61 @@
+# CI uniforme dei progetti (heroquest-studio, mana-wise, qr-menu, quota-zero, visto-easy).
+# Solo controlli: il deploy lo fa Coolify tramite l'integrazione GitHub, indipendentemente da questo workflow.
+# Job standard: Go (test; gofmt e vet bloccanti solo se STRICT_LINT=true), Web (se c'è un frontend), Docker (build senza push).
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  STRICT_LINT: "false"
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test -count=1 ./...
+
+      - name: Formattazione (gofmt)
+        continue-on-error: ${{ env.STRICT_LINT != 'true' }}
+        run: |
+          files=$(gofmt -l $(git ls-files '*.go' | grep -v '_templ.go$'))
+          if [ -n "$files" ]; then echo "::warning::File da formattare con gofmt:"; echo "$files"; exit 1; fi
+
+      - name: Vet
+        continue-on-error: ${{ env.STRICT_LINT != 'true' }}
+        run: go vet ./...
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build del Dockerfile (senza push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
