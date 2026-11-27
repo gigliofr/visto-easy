@@ -380,6 +380,7 @@ func (s *Server) Router() http.Handler {
 			r.Patch("/{id}", s.handlePatchPratica)
 			r.Delete("/{id}", s.handleDeletePratica)
 			r.Post("/{id}/submit", s.handleSubmitPratica)
+			r.Post("/{id}/messaggi", s.handleRichiedenteMessaggio)
 			r.Post("/{id}/documenti/presign", s.handlePresignDocumento)
 			r.Post("/{id}/documenti", s.handleAddDocumento)
 			r.Get("/{id}/documenti", s.handleListDocumenti)
@@ -1044,7 +1045,7 @@ func (s *Server) handleCreatePratica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go s.notifyBackofficePraticaCreated(p)
-	httpx.JSON(w, http.StatusCreated, p)
+	httpx.JSON(w, http.StatusCreated, praticaPerRichiedente(p))
 }
 
 func (s *Server) handleListMiePratiche(w http.ResponseWriter, r *http.Request) {
@@ -1054,7 +1055,7 @@ func (s *Server) handleListMiePratiche(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if claims.Role == string(model.RoleRichiedente) {
-		httpx.JSON(w, http.StatusOK, s.store.ListPraticheByUser(claims.UserID))
+		httpx.JSON(w, http.StatusOK, vistaPratiche(claims, s.store.ListPraticheByUser(claims.UserID)))
 		return
 	}
 	httpx.JSON(w, http.StatusOK, s.store.ListAllPratiche())
@@ -1076,7 +1077,7 @@ func (s *Server) handleGetPratica(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, vistaPratica(claims, p))
 }
 
 func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
@@ -1099,7 +1100,7 @@ func (s *Server) handlePatchPratica(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, "modifica non consentita")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, praticaPerRichiedente(p))
 }
 
 func (s *Server) handleDeletePratica(w http.ResponseWriter, r *http.Request) {
@@ -1134,7 +1135,7 @@ func (s *Server) handleSubmitPratica(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, "submit non consentito")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, p)
+	httpx.JSON(w, http.StatusOK, praticaPerRichiedente(p))
 }
 
 func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
@@ -1154,6 +1155,7 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 		NomeFile   string `json:"nome_file"`
 		MimeType   string `json:"mime_type"`
 		Dimensione int64  `json:"dimensione"`
+		S3Key      string `json:"s3_key"`
 	}
 	if !decodeJSON(w, r, &req) {
 		return
@@ -1162,7 +1164,12 @@ func (s *Server) handleAddDocumento(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadRequest, "file troppo grande")
 		return
 	}
-	doc, err := s.store.AddDocumento(id, model.Documento{Tipo: req.Tipo, NomeFile: req.NomeFile, MimeType: strings.ToLower(req.MimeType), Dimensione: req.Dimensione})
+	s3Key := strings.TrimSpace(req.S3Key)
+	if s3Key != "" && !isDocumentKeyForPratica(s3Key, id) {
+		httpx.Error(w, http.StatusBadRequest, "chiave documento non valida")
+		return
+	}
+	doc, err := s.store.AddDocumento(id, model.Documento{Tipo: req.Tipo, NomeFile: req.NomeFile, MimeType: strings.ToLower(req.MimeType), Dimensione: req.Dimensione, S3Key: s3Key})
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "errore upload")
 		return
@@ -1274,7 +1281,7 @@ func (s *Server) handleDownloadDocumento(w http.ResponseWriter, r *http.Request)
 	if s.presign != nil && strings.TrimSpace(d.S3Key) != "" {
 		session, err := s.presign.PresignDocumentDownload(d.S3Key, d.NomeFile)
 		if err == nil && strings.TrimSpace(session.DownloadURL) != "" {
-			http.Redirect(w, r, session.DownloadURL, http.StatusFound)
+			writeDownloadSession(w, r, session)
 			return
 		}
 	}
@@ -1304,7 +1311,7 @@ func (s *Server) handlePreviewDocumento(w http.ResponseWriter, r *http.Request) 
 	if s.presign != nil && strings.TrimSpace(d.S3Key) != "" {
 		session, err := s.presign.PresignDocumentDownload(d.S3Key, "")
 		if err == nil && strings.TrimSpace(session.DownloadURL) != "" {
-			http.Redirect(w, r, session.DownloadURL, http.StatusFound)
+			writeDownloadSession(w, r, session)
 			return
 		}
 	}
@@ -1364,7 +1371,11 @@ func (s *Server) handleListEventiPratica(w http.ResponseWriter, r *http.Request)
 		httpx.Error(w, http.StatusForbidden, "accesso negato")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"items": p.Eventi, "count": len(p.Eventi)})
+	eventi := p.Eventi
+	if claims.Role == string(model.RoleRichiedente) {
+		eventi = eventiVisibiliRichiedente(eventi)
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"items": eventi, "count": len(eventi)})
 }
 
 func (s *Server) handleCreatePagamentoSessione(w http.ResponseWriter, r *http.Request) {

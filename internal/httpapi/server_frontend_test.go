@@ -22,7 +22,7 @@ func TestRootServesFrontendHTML(t *testing.T) {
 		t.Fatalf("expected text/html content type, got=%q", ct)
 	}
 	body := rr.Body.String()
-	if !strings.Contains(body, "Frontend completo") {
+	if !strings.Contains(body, "id=\"landing\"") {
 		t.Fatalf("expected frontend marker in body")
 	}
 	if !strings.Contains(body, "id=\"formLogin\"") {
@@ -56,7 +56,7 @@ func TestIndexHTMLRouteServed(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("unexpected status for /index.html: got=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "Frontend completo") {
+	if !strings.Contains(rr.Body.String(), "id=\"landing\"") {
 		t.Fatalf("expected frontend html body")
 	}
 }
@@ -72,7 +72,7 @@ func TestNonAPINotFoundFallsBackToFrontend(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("unexpected status for frontend fallback: got=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), "id=\"appOutput\"") {
+	if !strings.Contains(rr.Body.String(), "id=\"app\"") {
 		t.Fatalf("expected SPA shell for fallback route")
 	}
 }

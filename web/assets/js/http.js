@@ -1,39 +1,88 @@
-import { state } from './session.js';
-import { out } from './ui.js';
+import { clearSession, setSession, state } from './session.js';
 
 function fullPath(path) {
   if (!state.apiBase) return path;
   return `${state.apiBase}${path}`;
 }
 
-export async function api(path, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (state.accessToken) {
-    headers.Authorization = `Bearer ${state.accessToken}`;
+let refreshing = null;
+
+async function refreshTokens() {
+  if (!state.refreshToken) return false;
+  if (!refreshing) {
+    refreshing = (async () => {
+      try {
+        const res = await fetch(fullPath('/api/auth/refresh'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: state.refreshToken }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user || state.user });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setTimeout(() => { refreshing = null; }, 0);
+      }
+    })();
   }
-  const response = await fetch(fullPath(path), { ...options, headers });
+  return refreshing;
+}
+
+async function rawRequest(path, options) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body !== undefined && !(options.body instanceof Blob) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
+  return fetch(fullPath(path), { ...options, headers });
+}
+
+async function parse(response) {
   const text = await response.text();
-  let data = null;
+  if (!text) return null;
   try {
-    data = text ? JSON.parse(text) : null;
+    return JSON.parse(text);
   } catch {
-    data = text;
+    return text;
   }
+}
+
+// api esegue una chiamata JSON. Su 401 prova una volta a rinnovare i token.
+// In caso di errore lancia { status, data, message }.
+export async function api(path, options = {}) {
+  const opts = { ...options };
+  if (opts.json !== undefined) {
+    opts.body = JSON.stringify(opts.json);
+    delete opts.json;
+  }
+  let response = await rawRequest(path, opts);
+  if (response.status === 401 && !path.startsWith('/api/auth/') && await refreshTokens()) {
+    response = await rawRequest(path, opts);
+  }
+  const data = await parse(response);
   if (!response.ok) {
-    const err = { status: response.status, data };
-    out(`Errore ${path}`, err);
-    throw err;
+    if (response.status === 401 && !path.startsWith('/api/auth/')) {
+      clearSession();
+      window.dispatchEvent(new CustomEvent('app:session-expired'));
+    }
+    const message = (data && typeof data === 'object' && (data.error || data.message)) || (typeof data === 'string' ? data : '') || `HTTP ${response.status}`;
+    throw { status: response.status, data, message };
   }
   return data;
 }
 
-export function formJson(form) {
-  const fd = new FormData(form);
-  const obj = {};
-  const sensitiveFields = new Set(['password', 'password_confirm', 'new_password', 'otp', 'code']);
-  for (const [k, v] of fd.entries()) {
-    const raw = String(v);
-    obj[k] = sensitiveFields.has(k) ? raw : raw.trim();
-  }
-  return obj;
+export async function apiBlob(path) {
+  let response = await rawRequest(path, {});
+  if (response.status === 401 && await refreshTokens()) response = await rawRequest(path, {});
+  if (!response.ok) throw { status: response.status, message: `HTTP ${response.status}` };
+  return response.blob();
+}
+
+export function errorMessage(err) {
+  if (!err) return '';
+  if (typeof err === 'string') return err;
+  return err.message || (err.data && err.data.error) || String(err);
 }
