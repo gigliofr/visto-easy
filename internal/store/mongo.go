@@ -616,7 +616,9 @@ func (s *MongoStore) AddDocumento(praticaID string, d model.Documento) (model.Do
 	d.PraticaID = praticaID
 	d.CaricatoIl = time.Now().UTC()
 	d.StatoValidazione = "PENDING"
-	d.S3Key = fmt.Sprintf("pratiche/%s/documenti/%s_%s", praticaID, d.ID, d.NomeFile)
+	if strings.TrimSpace(d.S3Key) == "" {
+		d.S3Key = fmt.Sprintf("pratiche/%s/documenti/%s_%s", praticaID, d.ID, d.NomeFile)
+	}
 	p.Documenti = append(p.Documenti, d)
 	p.AggiornatoIl = time.Now().UTC()
 

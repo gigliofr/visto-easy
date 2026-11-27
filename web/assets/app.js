@@ -1,4 +1,4 @@
-import { initApp } from './js/features.js';
+import { initApp } from './js/main.js';
 
 const BOOT_MESSAGE = 'Frontend inizializzato';
 
