@@ -1,4 +1,4 @@
-import { clearSession, setSession, state } from './session.js';
+import { clearSession, isAccessTokenExpired, setSession, state } from './session.js';
 
 function fullPath(path) {
   if (!state.apiBase) return path;
@@ -7,19 +7,23 @@ function fullPath(path) {
 
 let refreshing = null;
 
+// refreshTokens rinnova l'access token con il cookie HttpOnly del refresh token,
+// che il browser invia da solo. Un token rimasto in localStorage dalle versioni
+// precedenti viene mandato un'ultima volta: il server lo sposta nel cookie.
 async function refreshTokens() {
-  if (!state.refreshToken) return false;
   if (!refreshing) {
     refreshing = (async () => {
       try {
         const res = await fetch(fullPath('/api/auth/refresh'), {
           method: 'POST',
+          credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh_token: state.refreshToken }),
+          body: JSON.stringify(state.refreshToken ? { refresh_token: state.refreshToken } : {}),
         });
         if (!res.ok) return false;
         const data = await res.json();
-        setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user || state.user });
+        if (!data || !data.access_token) return false;
+        setSession({ accessToken: data.access_token, user: data.user || state.user });
         return true;
       } catch {
         return false;
@@ -79,6 +83,14 @@ export async function apiBlob(path) {
   if (response.status === 401 && await refreshTokens()) response = await rawRequest(path, {});
   if (!response.ok) throw { status: response.status, message: `HTTP ${response.status}` };
   return response.blob();
+}
+
+// restoreSession riprende la sessione all'avvio quando l'access token (15 minuti)
+// è scaduto ma il cookie del refresh token è ancora valido.
+export async function restoreSession() {
+  if (state.user && isAccessTokenExpired()) {
+    if (!(await refreshTokens())) clearSession();
+  }
 }
 
 export function errorMessage(err) {

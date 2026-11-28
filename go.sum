@@ -7,6 +7,8 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/gigliofr/gokit v0.3.0 h1:wllu5ATIZPFBCvMO+WrKAZIil0GZ9icnR5zkINZrPOw=
 github.com/gigliofr/gokit v0.3.0/go.mod h1:z6n4h2506Nbyqja8n2U5JIBtxzjQoqiArdh6ThabrT4=
+github.com/gigliofr/gokit v0.4.0 h1:/8SGyZQxGh+ek8db6eJRzv53X1XXkT3D3eIBptjQQR0=
+github.com/gigliofr/gokit v0.4.0/go.mod h1:z6n4h2506Nbyqja8n2U5JIBtxzjQoqiArdh6ThabrT4=
 github.com/gigliofr/gokit/storagex/s3 v0.1.0 h1:r8VZxtyjdluZn6NTHVTJ74rYk3TzUi8vugHPUpgeD08=
 github.com/gigliofr/gokit/storagex/s3 v0.1.0/go.mod h1:5Yzv1PzJ6Xr1OcqjLOce3ve8QZKMmMDkFBuuRCKt35A=
 github.com/go-chi/chi/v5 v5.2.3 h1:WQIt9uxdsAbgIYgid+BpYc+liqQZGMHRaUwp0JUcvdE=
