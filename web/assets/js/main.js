@@ -1,5 +1,5 @@
 // Avvio dell'applicazione: accesso, guscio, router e impostazioni.
-import { api, errorMessage } from './http.js';
+import { api, errorMessage, restoreSession } from './http.js';
 import { $, $$, html, icon, on, render, fresh } from './dom.js';
 import { initI18n, setLang, getLang, t, applyTranslations } from './i18n.js';
 import { toast, busy } from './toast.js';
@@ -151,7 +151,8 @@ function showShell() {
 async function logout() {
   const refresh = state.refreshToken;
   try {
-    if (refresh) await api('/api/auth/logout', { method: 'POST', json: { refresh_token: refresh } });
+    // Il server revoca la sessione e cancella il cookie del refresh token.
+    await api('/api/auth/logout', { method: 'POST', json: refresh ? { refresh_token: refresh } : {} });
   } catch {
     // la sessione locale viene chiusa comunque
   }
@@ -424,9 +425,11 @@ export function initApp(bootMessage) {
     route();
   });
 
-  if (window.location.pathname.startsWith('/backoffice') && !window.location.hash && hasBackofficeRole()) {
-    window.location.replace('#/bo/coda');
-  }
-  route();
-  document.documentElement.dataset.boot = bootMessage ? 'ok' : '';
+  restoreSession().finally(() => {
+    if (window.location.pathname.startsWith('/backoffice') && !window.location.hash && hasBackofficeRole()) {
+      window.location.replace('#/bo/coda');
+    }
+    route();
+    document.documentElement.dataset.boot = bootMessage ? 'ok' : '';
+  });
 }

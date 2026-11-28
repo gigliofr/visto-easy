@@ -1,5 +1,7 @@
 export const state = {
   accessToken: localStorage.getItem('ve_access_token') || '',
+  // Il refresh token vive in un cookie HttpOnly gestito dal server. Qui resta solo
+  // quello eventualmente salvato dalle versioni precedenti, da migrare al primo rinnovo.
   refreshToken: localStorage.getItem('ve_refresh_token') || '',
   apiBase: localStorage.getItem('ve_api_base') || '',
   user: (() => {
@@ -61,10 +63,17 @@ export function saveApiBase(value) {
 
 export function setSession(next) {
   state.accessToken = next.accessToken || '';
-  state.refreshToken = next.refreshToken || '';
+  // Dopo login e rinnovo il refresh token è nel cookie: il vecchio valore in
+  // localStorage si cancella. Resta solo se lo si ripassa esplicitamente
+  // (sessione delle versioni precedenti non ancora migrata).
+  state.refreshToken = typeof next.refreshToken === 'string' ? next.refreshToken : '';
   state.user = next.user || null;
   localStorage.setItem('ve_access_token', state.accessToken);
-  localStorage.setItem('ve_refresh_token', state.refreshToken);
+  if (state.refreshToken) {
+    localStorage.setItem('ve_refresh_token', state.refreshToken);
+  } else {
+    localStorage.removeItem('ve_refresh_token');
+  }
   if (state.user) {
     localStorage.setItem('ve_user', JSON.stringify(state.user));
   } else {

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gigliofr/gokit/authx/session"
 	"github.com/gigliofr/gokit/envx"
 	"github.com/gigliofr/gokit/httpx"
 	"github.com/gigliofr/gokit/mw"
@@ -677,20 +678,47 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		ID:        refreshID,
 		UserID:    u.ID,
 		Role:      string(u.Ruolo),
-		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+		ExpiresAt: time.Now().UTC().Add(refreshTTL),
 		Revoked:   false,
 	})
-	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh, "user": u})
+	refreshCookie(r).Set(w, refresh, refreshTTL)
+	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access, "user": u})
 }
 
-func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+// refreshTTL è la durata del refresh token e della sessione salvata.
+const refreshTTL = 7 * 24 * time.Hour
+
+// refreshCookie tiene il refresh token in un cookie HttpOnly (JavaScript non può
+// leggerlo), inviato solo alle rotte /api/auth e mai da altri siti.
+func refreshCookie(r *http.Request) session.RefreshCookie {
+	secure := r.TLS != nil || strings.EqualFold(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]), "https")
+	return session.RefreshCookie{Path: "/api/auth", Secure: secure}
+}
+
+// requestRefreshToken legge il refresh token dal cookie; i browser con la
+// versione precedente lo mandano ancora nel corpo JSON (ok=false se il corpo non è valido).
+func requestRefreshToken(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if tok := strings.TrimSpace(refreshCookie(r).Get(r)); tok != "" {
+		return tok, true
+	}
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
 	}
+	if r.ContentLength == 0 {
+		return "", true
+	}
 	if !decodeJSON(w, r, &req) {
+		return "", false
+	}
+	return strings.TrimSpace(req.RefreshToken), true
+}
+
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	token, ok := requestRefreshToken(w, r)
+	if !ok {
 		return
 	}
-	c, err := s.tokens.Parse(req.RefreshToken)
+	c, err := s.tokens.Parse(token)
 	if err != nil || c.Type != "refresh" {
 		_, _ = s.store.AddAuditEvent(model.AuditEvent{
 			Action:   "AUTH_REFRESH_REJECTED",
@@ -734,7 +762,7 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 		ID:        newRefreshID,
 		UserID:    c.UserID,
 		Role:      c.Role,
-		ExpiresAt: time.Now().UTC().Add(7 * 24 * time.Hour),
+		ExpiresAt: time.Now().UTC().Add(refreshTTL),
 		Revoked:   false,
 	})
 	_, _ = s.store.RevokeRefreshSession(c.ID, newRefreshID)
@@ -749,15 +777,18 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 			"new_refresh_session_id": newRefreshID,
 		},
 	})
-	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access, "refresh_token": refresh})
+	refreshCookie(r).Set(w, refresh, refreshTTL)
+	httpx.JSON(w, http.StatusOK, map[string]any{"access_token": access})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		RefreshToken string `json:"refresh_token"`
+	token, ok := requestRefreshToken(w, r)
+	if !ok {
+		return
 	}
-	if decodeJSON(w, r, &req) && strings.TrimSpace(req.RefreshToken) != "" {
-		if c, err := s.tokens.Parse(req.RefreshToken); err == nil && c.Type == "refresh" && strings.TrimSpace(c.ID) != "" {
+	refreshCookie(r).Clear(w)
+	if token != "" {
+		if c, err := s.tokens.Parse(token); err == nil && c.Type == "refresh" && strings.TrimSpace(c.ID) != "" {
 			if ok, _ := s.store.RevokeRefreshSession(c.ID, ""); ok {
 				_, _ = s.store.AddAuditEvent(model.AuditEvent{
 					ActorID:    c.UserID,
