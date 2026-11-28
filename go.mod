@@ -3,7 +3,7 @@ module visto-easy
 go 1.24.0
 
 require (
-	github.com/gigliofr/gokit v0.3.0
+	github.com/gigliofr/gokit v0.4.0
 	github.com/gigliofr/gokit/storagex/s3 v0.1.0
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/golang-jwt/jwt/v5 v5.3.0
